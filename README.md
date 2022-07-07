@@ -38,6 +38,8 @@ Shift - ascend (noclip enabled)
 
 ✓ Gravity, jumping, stair climbing
 
+✓ Directional lighting
+
 _ Model texturing
 
 _ Entities
