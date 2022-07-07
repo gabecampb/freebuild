@@ -127,27 +127,42 @@ uint32_t create_mesh(float* vtx_data, uint16_t* idx_data, uint32_t vbo_size, uin
 
 // create the default brick mesh (1x1x1)
 void init_mesh() {
-	float vbo_data[] = {
-		 0.5,  0.5, -0.5,
-		 0.5, -0.5, -0.5,
-		 0.5,  0.5,  0.5,
-		 0.5, -0.5,  0.5,
-		-0.5,  0.5, -0.5,
-		-0.5, -0.5, -0.5,
-		-0.5,  0.5,  0.5,
-		-0.5, -0.5,  0.5
-	};
-
 	uint16_t ibo_data[] = {
-		0, 1, 2, 2, 1, 3,
-		4, 0, 6, 6, 0, 2,
-		7, 5, 6, 6, 5, 4,
-		3, 1, 7, 7, 1, 5,
-		4, 5, 0, 0, 5, 1,
-		3, 7, 2, 2, 7, 6
+		0, 	1,	2,	 2, 1, 	3,
+		4, 	5,	6,	 6, 5, 	7,
+		8, 	9, 	10, 10, 9, 	11,
+		12, 13, 14, 14, 13, 15,
+		16, 17, 18, 18, 17, 19,
+		20, 21, 22, 22, 21, 23 };
+	// 24 vertices (3 different vertices per corner, as each corner is shared by 3 faces)
+	float vbo_data[] = {
+		-0.5, -0.5, 0.5,	0, 0, 1,
+		0.5, -0.5, 0.5,		0, 0, 1, 
+		-0.5, 0.5, 0.5,		0, 0, 1, 
+		0.5, 0.5, 0.5,		0, 0, 1, 
+		-0.5, 0.5, 0.5,		0, 1, 0, 
+		0.5, 0.5, 0.5,		0, 1, 0, 
+		-0.5, 0.5, -0.5,	0, 1, 0, 
+		0.5, 0.5, -0.5,		0, 1, 0, 
+		-0.5, 0.5, -0.5,	0, 0, -1, 
+		0.5, 0.5, -0.5,		0, 0, -1, 
+		-0.5, -0.5, -0.5,	0, 0, -1, 
+		0.5, -0.5, -0.5,	0, 0, -1, 
+		-0.5, -0.5, -0.5,	0, -1, 0, 
+		0.5, -0.5, -0.5,	0, -1, 0, 
+		-0.5, -0.5, 0.5,	0, -1, 0, 
+		0.5, -0.5, 0.5,		0, -1, 0, 
+		0.5, -0.5, 0.5,		1, 0, 0, 
+		0.5, -0.5, -0.5,	1, 0, 0, 
+		0.5, 0.5, 0.5,		1, 0, 0, 
+		0.5, 0.5, -0.5,		1, 0, 0, 
+		-0.5, -0.5, -0.5,	-1, 0, 0, 
+		-0.5, -0.5, 0.5,	-1, 0, 0, 
+		-0.5, 0.5, -0.5,	-1, 0, 0, 
+		-0.5, 0.5, 0.5,		-1, 0, 0
 	};
 
-	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 0);
+	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 1);
 }
 
 /*==================================================*/
@@ -719,37 +734,15 @@ void translate_player(vec3 translation) {
 // a lot of the work was done in init_gl
 // shader and program setting, and mesh generation (mesh 0 is our brick)
 
-GLuint program_id;
+// these are the main programs:
+// program_ids[0] - basic. reads only vec3 pos attribute; solid color (vtx_format >= 0).
+// program_ids[1] - reads vec3 pos and vec3 norm attributes (vtx_format >= 1).
 
-void init_render() {	// setup and set shader program, GL states
-	// setup depth test, blending
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+GLuint* program_ids;
+uint32_t n_programs;
 
-	// we have a uniform for color, and mat4 for MVP.
-	const char* vtx_shader_src =
-	"#version 330										\n"
-	"layout(location=0) in vec3 vtx_pos;				\n"
-	"out vec3 vtx_norm;									\n"
-	"uniform mat4 u_mvp;								\n"
-	"void main() {										\n"
-	"	vtx_norm = normalize(vtx_pos);					\n"
-	"	vec4 v = vec4(vtx_pos,1);						\n"
-	"	gl_Position = u_mvp * vec4(vtx_pos,1);			\n"
-	"}													";
-
-	const char* pxl_shader_src =
-	"#version 330										\n"
-	"layout(location=0) out vec4 final;					\n"
-	"in vec3 vtx_norm;									\n"
-	"uniform vec4 u_color;								\n"
-	"void main() {										\n"
-	"	final = u_color;								\n"
-	"	float f = (vtx_norm.x+vtx_norm.y+vtx_norm.z)/3.0;\n"
-	"	final = final - vec4(vec3(f,f,f)*0.3,0);			\n"
-	"}													";
-
+// create a new GL program
+GLuint create_program(const char* vtx_shader_src, const char* pxl_shader_src) {
 	GLuint vtx_shader = glCreateShader(GL_VERTEX_SHADER);
 	GLuint pxl_shader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(vtx_shader,1,&vtx_shader_src,0);
@@ -777,26 +770,96 @@ void init_render() {	// setup and set shader program, GL states
 		printf("%s\n", info_log);
 		exit(1);
 	}
-	program_id = glCreateProgram();
-	glAttachShader(program_id,vtx_shader);
-	glAttachShader(program_id,pxl_shader);
-	glLinkProgram(program_id);
-	glGetProgramiv(program_id,GL_LINK_STATUS,&success);
+	program_ids = realloc(program_ids, sizeof(GLuint));
+	program_ids[n_programs] = glCreateProgram();
+	glAttachShader(program_ids[n_programs],vtx_shader);
+	glAttachShader(program_ids[n_programs],pxl_shader);
+	glLinkProgram(program_ids[n_programs]);
+	glGetProgramiv(program_ids[n_programs],GL_LINK_STATUS,&success);
 	if(!success) {
 		printf("failed to link shaders.\n");
 		exit(1);
 	}
-	glDetachShader(program_id, vtx_shader);
-	glDetachShader(program_id, pxl_shader);
-	glUseProgram(program_id);
+	glDetachShader(program_ids[n_programs], vtx_shader);
+	glDetachShader(program_ids[n_programs], pxl_shader);
+	n_programs++;
+}
+
+void init_render() {	// setup and set shader program, GL states
+	// setup depth test, blending
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	const char* vtx_shader_src_1 =
+	"#version 330										\n"
+	"layout(location=0) in vec3 vtx_pos;				\n"
+	"uniform mat4 u_model, u_view, u_proj;				\n"
+	"void main() {										\n"	
+	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);	\n"
+	"}													";
+
+	const char* pxl_shader_src_1 =
+	"#version 330										\n"
+	"layout(location=0) out vec4 final;					\n"
+	"uniform vec4 u_color;								\n"
+	"void main() {										\n"
+	"	final = u_color;\n"
+	"}													";
+
+	create_program(vtx_shader_src_1, pxl_shader_src_1);
+
+	const char* vtx_shader_src_2 =
+	"#version 330										\n"
+	"layout(location=0) in vec3 vtx_pos;				\n"
+	"layout(location=1) in vec3 vtx_norm;				\n"
+	"out vec3 pxl_norm;									\n"
+	"out vec3 pxl_pos;									\n"
+	"uniform mat4 u_model, u_view, u_proj;				\n"
+	"void main() {										\n"	
+	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;"
+	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));		\n"
+	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);	\n"
+	"}													";
+
+	const char* pxl_shader_src_2 =
+	"#version 330										\n"
+	"layout(location=0) out vec4 final;					\n"
+	"in vec3 pxl_norm;									\n"
+	"in vec3 pxl_pos;									\n"
+	"uniform vec4 u_color;								\n"
+	"void main() {										\n"
+	"	vec3 light_pos = vec3(75,50,50);				\n"
+	"	vec3 light_col = vec3(.6,.6,.6);					\n"
+	"	vec3 norm = normalize(pxl_norm);				\n"	
+	//"	vec3 light_dir = normalize(light_pos - pxl_pos);\n"			// from light position to object (point light)
+	"	vec3 light_dir = normalize(-vec3(-0.2f, -1.0f, -1.5f));\n"	// directional light
+	"	float diff = max(dot(norm, light_dir), 0.0);	\n"
+	"	vec3 diffuse = diff * light_col;				\n"
+	"	vec3 ambient = vec3(.6,.6,.6);					\n"
+	"	final = vec4(ambient+diffuse,1) * u_color;\n"
+	"}													";
+
+	create_program(vtx_shader_src_2, pxl_shader_src_2);
 }
 
 void render(uint8_t render_player) {
-	// get all needed uniform IDs from shader program (color uniform, mvp)
-	GLint mvp_loc = glGetUniformLocation(program_id,"u_mvp");
-	GLint color_loc = glGetUniformLocation(program_id,"u_color");
+	// get all needed uniform IDs from shader program
+	glUseProgram(program_ids[1]);
+	GLint model_loc = glGetUniformLocation(program_ids[1],"u_model");
+	GLint view_loc = glGetUniformLocation(program_ids[1],"u_view");
+	GLint proj_loc = glGetUniformLocation(program_ids[1],"u_proj");
+	GLint color_loc = glGetUniformLocation(program_ids[1],"u_color");
 
 	mat4 persp = perspective(fovy, window_width/window_height, near, far);
+	float mat_data[] = {
+		persp.m00, persp.m10, persp.m20, persp.m30,
+		persp.m01, persp.m11, persp.m21, persp.m31,
+		persp.m02, persp.m12, persp.m22, persp.m32,
+		persp.m03, persp.m13, persp.m23, persp.m33
+	};
+	glUniformMatrix4fv(proj_loc, 1, GL_FALSE, &mat_data[0]);
+
 	vec3 center = camera_center(player->camera);
 	vec3 up = { 0,1,0 };
 
@@ -819,6 +882,14 @@ void render(uint8_t render_player) {
 		center = camera_center(player->camera);
 		view = look_at(player->camera.pos, center, up);
 	}
+
+	float view_data[] = {
+		view.m00, view.m10, view.m20, view.m30,
+		view.m01, view.m11, view.m21, view.m31,
+		view.m02, view.m12, view.m22, view.m32,
+		view.m03, view.m13, view.m23, view.m33
+	};
+	glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view_data[0]);
 
 	// render player - a hard-coded collection of brick meshes in different positions/scales.
 	//						arms + legs are 1x2x1. head is 2x1x1. torso is 2x2x1.
@@ -857,28 +928,26 @@ void render(uint8_t render_player) {
 		}
 
 		for(uint32_t i = 0; i < 6; i++) {
-			// calculate MVP
+			// calculate model matrix
 			mat4 smat = scale(p_scale[i]);
 			mat4 rmat = quat_to_mat4(player->quat);
 			// translate parts to their correct position in object space,
 			// then scale, then rotate, then translate to where the player is in the world.
 			mat4 tmat = translate(p_pos[i]);
-			mat4 mvp = mat4_mat4(rmat,smat);	// scale, then rotate
-			mvp = mat4_mat4(mvp,tmat);	// translate parts to where they should be
+			mat4 model = mat4_mat4(rmat,smat);	// scale, then rotate
+			model = mat4_mat4(model,tmat);	// translate parts to where they should be
 			tmat = translate(player->pos);
-			mvp = mat4_mat4(tmat,mvp);		// apply translation
-			mvp = mat4_mat4(view,mvp);		// apply view
-			mvp = mat4_mat4(persp,mvp);		// apply projection
+			model = mat4_mat4(tmat,model);		// apply translation
 			float mat_data[] = {
-				mvp.m00, mvp.m10, mvp.m20, mvp.m30,
-				mvp.m01, mvp.m11, mvp.m21, mvp.m31,
-				mvp.m02, mvp.m12, mvp.m22, mvp.m32,
-				mvp.m03, mvp.m13, mvp.m23, mvp.m33
+				model.m00, model.m10, model.m20, model.m30,
+				model.m01, model.m11, model.m21, model.m31,
+				model.m02, model.m12, model.m22, model.m32,
+				model.m03, model.m13, model.m23, model.m33
 			};
 
 			// update uniforms
 			glUniform4f(color_loc, p_color[i].x, p_color[i].y, p_color[i].z, p_color[i].w);
-			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &mat_data[0]);
+			glUniformMatrix4fv(model_loc, 1, GL_FALSE, &mat_data[0]);
 
 			// submit draw call
 			glBindVertexArray(mesh.vao_id);
@@ -896,24 +965,22 @@ void render(uint8_t render_player) {
 		brick_t brick = world->bricks[i];
 		mesh_t mesh = meshes[brick.mesh_id];
 
-		// calculate MVP
+		// calculate model matrix
 		mat4 smat = scale(brick.scale);
 		mat4 rmat = quat_to_mat4(brick.quat);
 		mat4 tmat = translate(brick.pos);
-		mat4 mvp = mat4_mat4(rmat,smat);	// scale, then rotate
-		mvp = mat4_mat4(tmat,mvp);		// apply translation
-		mvp = mat4_mat4(view,mvp);		// apply view
-		mvp = mat4_mat4(persp,mvp);		// apply projection
+		mat4 model = mat4_mat4(rmat,smat);	// scale, then rotate
+		model = mat4_mat4(tmat,model);		// apply translation
 		float mat_data[] = {
-			mvp.m00, mvp.m10, mvp.m20, mvp.m30,
-			mvp.m01, mvp.m11, mvp.m21, mvp.m31,
-			mvp.m02, mvp.m12, mvp.m22, mvp.m32,
-			mvp.m03, mvp.m13, mvp.m23, mvp.m33
+			model.m00, model.m10, model.m20, model.m30,
+			model.m01, model.m11, model.m21, model.m31,
+			model.m02, model.m12, model.m22, model.m32,
+			model.m03, model.m13, model.m23, model.m33
 		};
 
 		// update uniforms
 		glUniform4f(color_loc, brick.color.x, brick.color.y, brick.color.z, brick.color.w);
-		glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &mat_data[0]);
+		glUniformMatrix4fv(model_loc, 1, GL_FALSE, &mat_data[0]);
 
 		// submit draw call
 		glBindVertexArray(mesh.vao_id);
@@ -928,36 +995,52 @@ void render(uint8_t render_player) {
 
 void render_physics() {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	// get all needed uniform IDs from shader program (color uniform, mvp)
-	GLint mvp_loc = glGetUniformLocation(program_id,"u_mvp");
-	GLint color_loc = glGetUniformLocation(program_id,"u_color");
+	// get all needed uniform IDs from shader program
+	glUseProgram(program_ids[0]);
+	GLint model_loc = glGetUniformLocation(program_ids[0],"u_model");
+	GLint view_loc = glGetUniformLocation(program_ids[0],"u_view");
+	GLint proj_loc = glGetUniformLocation(program_ids[0],"u_proj");
+	GLint color_loc = glGetUniformLocation(program_ids[0],"u_color");
 
 	mat4 persp = perspective(fovy, window_width/window_height, near, far);
+	float mat_data[] = {
+		persp.m00, persp.m10, persp.m20, persp.m30,
+		persp.m01, persp.m11, persp.m21, persp.m31,
+		persp.m02, persp.m12, persp.m22, persp.m32,
+		persp.m03, persp.m13, persp.m23, persp.m33
+	};
+	glUniformMatrix4fv(proj_loc, 1, GL_FALSE, &mat_data[0]);
+
+	vec3 center = camera_center(player->camera);
+	vec3 up = { 0,1,0 };
+	mat4 view = look_at(player->camera.pos, center, up);
+	float view_data[] = {
+		view.m00, view.m10, view.m20, view.m30,
+		view.m01, view.m11, view.m21, view.m31,
+		view.m02, view.m12, view.m22, view.m32,
+		view.m03, view.m13, view.m23, view.m33
+	};
+	glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view_data[0]);
 
 	// render all colliders
 	for(uint32_t i = 0; i < world->n_colls; i++) {
 		collision_t coll = world->colls[i];
 		mesh_t mesh = meshes[0];
 
-		// calculate MVP
-		vec3 center = camera_center(player->camera);
-		vec3 up = { 0,1,0 };
-		mat4 view = look_at(player->camera.pos, center, up);
+		// calculate model matrix
 		mat4 smat = scale(coll.dim);
 		mat4 tmat = translate(__add_vec3(coll.pos,__scale_vec3(coll.dim,0.5)));		// how much to translate (re-set to origin)
-		mat4 mvp = mat4_mat4(tmat,smat);	// scale, then translate
-		mvp = mat4_mat4(view,mvp);		// apply view
-		mvp = mat4_mat4(persp,mvp);		// apply projection
+		mat4 model = mat4_mat4(tmat,smat);	// scale, then translate
 		float mat_data[] = {
-			mvp.m00, mvp.m10, mvp.m20, mvp.m30,
-			mvp.m01, mvp.m11, mvp.m21, mvp.m31,
-			mvp.m02, mvp.m12, mvp.m22, mvp.m32,
-			mvp.m03, mvp.m13, mvp.m23, mvp.m33
+			model.m00, model.m10, model.m20, model.m30,
+			model.m01, model.m11, model.m21, model.m31,
+			model.m02, model.m12, model.m22, model.m32,
+			model.m03, model.m13, model.m23, model.m33
 		};
 
 		// update uniforms
 		glUniform4f(color_loc, 1,1,1,1);
-		glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &mat_data[0]);
+		glUniformMatrix4fv(model_loc, 1, GL_FALSE, &mat_data[0]);
 
 		// submit draw call
 		glBindVertexArray(mesh.vao_id);

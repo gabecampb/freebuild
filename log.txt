@@ -12,8 +12,15 @@ Added arm raising after falling a distance > 6 studs
 Finished create_mesh(), init_mesh() now uses it
 
 
+2022-07-07
+==========
 
-(WIP) Switch default mesh to vtx_format 1 - add normals
+Switched default mesh to vtx_format 1 - now has normals
+Added create_program() for creating a new GL program given shader strings and adding it to a global array
+Implemented basic directional lighting using normals
+
+
+
 (WIP) Create texturing system - stud textures
 (WIP) Create zombie AI using new entities system entity_t - player_t pos, quat replaced by entity_t
 	There will be multiple humanoid entities in a game - rendered as character. There will be several AI modes -
