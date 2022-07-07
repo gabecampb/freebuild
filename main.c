@@ -27,7 +27,7 @@ float fovy = 60;
 float near = 0.1;
 float far = 100;
 
-uint8_t enable_physics_draw = 0;
+uint8_t enable_physics_draw = 1;
 
 typedef struct vec2 { float x,y; } vec2;
 typedef struct vec3 { float x,y,z; } vec3;
@@ -68,16 +68,62 @@ player_t* player;
 typedef struct mesh_t {
 	GLuint vbo_id, ibo_id, vao_id;
 	uint32_t n_indices;
-	uint32_t vtx_format;				// 0 = vec3 pos
+	uint32_t vtx_format;				// 0 = v3 pos, 1 = v3 pos v3 norm (default mesh), 2 = v3 pos v3 norm v2 tex
 	uint8_t has_ibo;
 } mesh_t;
 
 mesh_t* meshes;
 uint32_t n_meshes;
 
+// create a mesh and return the mesh ID
+uint32_t create_mesh(float* vtx_data, uint16_t* idx_data, uint32_t vbo_size, uint32_t ibo_size, uint32_t vtx_format) {
+	uint32_t stride = 0;
+	switch(vtx_format) {
+		case 0: stride = 12; break;
+		case 1: stride = 24; break;
+		case 2: stride = 32; break;
+		default: printf("internal error: create_mesh given invalid vtx_format\n"); exit(1);
+	}
 
-// vtx_format: 0 = v3 pos
-void create_mesh(float* vtx_data, uint32_t n_indices, uint32_t vtx_format) {}
+	GLuint buffers[2];
+	glGenBuffers(2,buffers);
+	glBindBuffer(GL_ARRAY_BUFFER,buffers[0]);
+	glBufferData(GL_ARRAY_BUFFER, vbo_size, vtx_data, GL_STATIC_DRAW);
+	if(idx_data) {
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,buffers[1]);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER,ibo_size,idx_data,GL_STATIC_DRAW);
+	}
+	GLuint vao_id = 0;
+	glGenVertexArrays(1,&vao_id);
+	glBindVertexArray(vao_id);
+	glBindBuffer(GL_ARRAY_BUFFER,buffers[0]);
+	if(idx_data) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,buffers[1]);
+	switch(vtx_format) {
+		case 0:			// v3 pos
+			glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,stride,0);
+			glEnableVertexAttribArray(0); break;
+		case 1:			// v3 pos, v3 norm
+			glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,stride,0);
+			glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,stride,(void*)12);
+			glEnableVertexAttribArray(0);
+			glEnableVertexAttribArray(1); break;
+		case 2:			// v3 pos, v3 norm, v2 tex coord
+			glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,stride,0);
+			glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,stride,(void*)12);
+			glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,stride,(void*)24);
+			glEnableVertexAttribArray(0);
+			glEnableVertexAttribArray(1);
+			glEnableVertexAttribArray(2); break;
+	}
+	meshes = realloc(meshes, sizeof(mesh_t)*(n_meshes+1));
+	meshes[n_meshes].vbo_id = buffers[0];
+	meshes[n_meshes].ibo_id = buffers[1];
+	meshes[n_meshes].vao_id = vao_id;
+	meshes[n_meshes].n_indices = idx_data ? ibo_size/2 : vbo_size/stride;
+	meshes[n_meshes].vtx_format = vtx_format;
+	meshes[n_meshes].has_ibo = idx_data ? 1 : 0, meshes[n_meshes].ibo_id = buffers[1];
+	return n_meshes++;
+}
 
 // create the default brick mesh (1x1x1)
 void init_mesh() {
@@ -101,29 +147,7 @@ void init_mesh() {
 		3, 7, 2, 2, 7, 6
 	};
 
-	meshes = calloc(1,sizeof(mesh_t));
-	n_meshes++;
-
-	GLuint buffers[2];
-	glGenBuffers(2,buffers);
-	glBindBuffer(GL_ARRAY_BUFFER,buffers[0]);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,buffers[1]);
-	glBufferData(GL_ARRAY_BUFFER,sizeof(vbo_data),vbo_data,GL_STATIC_DRAW);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(ibo_data),ibo_data,GL_STATIC_DRAW);
-
-	GLuint vao;
-	glGenVertexArrays(1,&vao);
-	glBindVertexArray(vao);
-	glBindBuffer(GL_ARRAY_BUFFER,buffers[0]);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,buffers[1]);
-	glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,12,0);
-	glEnableVertexAttribArray(0);
-
-	meshes[0].vbo_id = buffers[0];
-	meshes[0].ibo_id = buffers[1];
-	meshes[0].vao_id = vao;
-	meshes[0].n_indices = sizeof(ibo_data)/2;
-	meshes[0].has_ibo = 1;
+	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 0);
 }
 
 /*==================================================*/
@@ -703,8 +727,6 @@ void init_render() {	// setup and set shader program, GL states
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	glClearColor(0.0,0.2,0.4,1);
-
 	// we have a uniform for color, and mat4 for MVP.
 	const char* vtx_shader_src =
 	"#version 330										\n"
@@ -1156,6 +1178,7 @@ int main() {
 
 	float frame = 0;
 	while(!glfwWindowShouldClose(window)) {
+		glClearColor(0.0,0.2,0.4,1);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		process_input();
