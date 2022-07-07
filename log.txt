@@ -1,0 +1,18 @@
+2022-07-05
+==========
+
+Started the project. Created mesh/world system, AABB collision and physics, world rendering, start of camera system.
+
+
+2022-07-06
+==========
+
+Created physics wireframe drawing, player camera, player input handling, player movement, stair climbing.
+Added arm raising after falling a distance > 6 studs
+
+
+(WIP) Create texturing system - stud textures
+(WIP) Create zombie AI using new entities system entity_t - player_t pos, quat replaced by entity_t
+	There will be multiple humanoid entities in a game - rendered as character. There will be several AI modes -
+	random walking mode and a mode to chase any specified entitity.
+(WIP) Create start of HUD system (show health, which is stored in player_t's entity_t)
