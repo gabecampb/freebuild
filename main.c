@@ -140,27 +140,27 @@ void init_mesh() {
 		20, 21, 22, 22, 21, 23 };
 	// 24 vertices (3 different vertices per corner, as each corner is shared by 3 faces)
 	float vbo_data[] = {
-		-0.5, -0.5, 0.5,	0, 0, 1,	0, 0,
+		-0.5, -0.5, 0.5,	0, 0, 1,	0, 0,		// face 0
 		0.5, -0.5, 0.5,		0, 0, 1,	0, 1,
 		-0.5, 0.5, 0.5,		0, 0, 1,	1, 0,
 		0.5, 0.5, 0.5,		0, 0, 1,	1, 1,
-		-0.5, 0.5, 0.5,		0, 1, 0,	0, 0,
+		-0.5, 0.5, 0.5,		0, 1, 0,	0, 0,		// face 1
 		0.5, 0.5, 0.5,		0, 1, 0,	0, 1,
 		-0.5, 0.5, -0.5,	0, 1, 0,	1, 0,
 		0.5, 0.5, -0.5,		0, 1, 0,	1, 1,
-		-0.5, 0.5, -0.5,	0, 0, -1,	0, 0,
+		-0.5, 0.5, -0.5,	0, 0, -1,	1, 1,		// face 2
 		0.5, 0.5, -0.5,		0, 0, -1,	0, 1,
 		-0.5, -0.5, -0.5,	0, 0, -1,	1, 0,
-		0.5, -0.5, -0.5,	0, 0, -1,	1, 1,
-		-0.5, -0.5, -0.5,	0, -1, 0,	0, 0,
+		0.5, -0.5, -0.5,	0, 0, -1,	0, 0,
+		-0.5, -0.5, -0.5,	0, -1, 0,	0, 0,		// face 3
 		0.5, -0.5, -0.5,	0, -1, 0,	0, 1,
 		-0.5, -0.5, 0.5,	0, -1, 0,	1, 0,
 		0.5, -0.5, 0.5,		0, -1, 0,	1, 1,
-		0.5, -0.5, 0.5,		1, 0, 0,	0, 0,
+		0.5, -0.5, 0.5,		1, 0, 0,	0, 0,		// face 4
 		0.5, -0.5, -0.5,	1, 0, 0,	0, 1,
 		0.5, 0.5, 0.5,		1, 0, 0,	1, 0,
 		0.5, 0.5, -0.5,		1, 0, 0,	1, 1,
-		-0.5, -0.5, -0.5,	-1, 0, 0,	0, 0,
+		-0.5, -0.5, -0.5,	-1, 0, 0,	0, 0,		// face 5
 		-0.5, -0.5, 0.5,	-1, 0, 0,	0, 1,
 		-0.5, 0.5, -0.5,	-1, 0, 0,	1, 0,
 		-0.5, 0.5, 0.5,		-1, 0, 0,	1, 1
@@ -899,9 +899,21 @@ void init_render() {	// setup and set shader program, GL states
 	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));	\n"
 	"	pxl_tex = vtx_tex;								\n"
 	"	face_id = uint(gl_VertexID/4);					\n"
-	"	if(face_id == 1u || face_id == 3u) {			\n"	// top face and bottom face - scale tex coords by x,z
-	"		pxl_tex.x *= u_model[0][0];					\n"
+	"	if(face_id == 1u || face_id == 3u) {			\n"	// top/bottom face - scale tex coords by x,z
+	"		pxl_tex.x *= u_model[2][2];					\n"
+	"		pxl_tex.y *= u_model[0][0];					\n"
+	"	}												\n"
+	"	if(face_id == 4u || face_id == 5u) {			\n"	// left/right face - scale tex coords by y,z
+	"		pxl_tex.x *= u_model[1][1];					\n"
 	"		pxl_tex.y *= u_model[2][2];					\n"
+	"	}												\n"
+	"	if(face_id == 0u) {								\n" // front face - scale tex coords by x,y
+	"		pxl_tex.x *= u_model[1][1];					\n"
+	"		pxl_tex.y *= u_model[0][0];					\n"
+	"	}												\n"
+	"	if(face_id == 2u) {								\n" // front face - scale tex coords by x,y
+	"		pxl_tex.x *= u_model[0][0];					\n"
+	"		pxl_tex.y *= u_model[1][1];					\n"
 	"	}												\n"
 	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);\n"
 	"}													";

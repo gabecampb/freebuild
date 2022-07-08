@@ -27,6 +27,7 @@ Added texture coordinates to default mesh, and per-face texture toggling support
 Added texture_ids array to brick_t; texture IDs for each face (0 if disabled)
 Added texture loading (load_texture_from_file) using stb
 Texture binding and sampling added in render(), added stud textures
+Shader now scales texture coordinates for all faces of bricks by the brick's scale
 
 
 
