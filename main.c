@@ -11,6 +11,9 @@
 #include <time.h>
 #include <string.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
 #include <GL/glext.h>
@@ -167,15 +170,45 @@ void init_mesh() {
 }
 
 /*==================================================*/
+/*				TEXTURE LOADING						*/
+/*==================================================*/
+
+GLuint* gl_textures;
+uint32_t n_textures;
+
+// return 0 on failure
+GLuint load_texture_from_file(char* path) {
+	uint32_t w, h, comp;
+	uint8_t* image = stbi_load(path, &w, &h, &comp, 0);
+	if(!image) {
+		printf("internal error: failed to load texture from file %s\n", path);
+		return 0;
+	}
+	// create texture
+	GLuint tbo_id;
+	glGenTextures(1,&tbo_id);
+	glBindTexture(GL_TEXTURE_2D, tbo_id);
+	// upload image to TBO
+	if(comp == 3)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	else if(comp == 4)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+	// return created texture's ID (or 0 on failure)
+	gl_textures = realloc(gl_textures, sizeof(GLuint)*(n_textures+1));
+	gl_textures[n_textures++] = tbo_id;
+	stbi_image_free(image);
+	return tbo_id;
+}
+
+/*==================================================*/
 /*				WORLD DATA AND MANAGEMENT			*/
 /*==================================================*/
 
 typedef struct brick_t {
 	uint32_t mesh_id;
-	vec3 pos;
-	vec4 quat;
-	vec3 scale;
-	vec4 color;
+	vec3 pos, scale;
+	vec4 quat, color;
+	GLuint texture_ids[6];	// for each face, the ID of a texture. 0 if untextured.
 	uint8_t has_gravity, has_collision;
 } brick_t;
 
@@ -199,15 +232,23 @@ void init_world() {
 void add_brick(world_t* world, vec3 pos, vec4 quat, vec3 scale, vec4 color, uint32_t mesh_id,
 	uint8_t has_gravity, uint8_t has_collision) {
 	world->bricks = realloc(world->bricks, sizeof(brick_t)*(world->n_bricks+1));
-	world->bricks[world->n_bricks].pos = pos;
-	world->bricks[world->n_bricks].quat = quat;
-	world->bricks[world->n_bricks].scale = scale;
-	world->bricks[world->n_bricks].color = color;
-	world->bricks[world->n_bricks].mesh_id = mesh_id;
-	world->bricks[world->n_bricks].has_gravity = has_gravity;
-	world->bricks[world->n_bricks].has_collision = has_collision;
-	world->n_bricks++;
+	brick_t new_brick;
+	new_brick.pos = pos;
+	new_brick.quat = quat;
+	new_brick.scale = scale;
+	new_brick.color = color;
+	new_brick.mesh_id = mesh_id;
+	new_brick.has_gravity = has_gravity;
+	new_brick.has_collision = has_collision;
+	memset(&new_brick.texture_ids,0,sizeof(GLuint)*6);
+	new_brick.texture_ids[1] = gl_textures[0];	// top
+	new_brick.texture_ids[3] = gl_textures[1];	// bottom
+	world->bricks[world->n_bricks++] = new_brick;
 	if(has_collision) add_brick_collider_aabb(world->n_bricks-1);
+}
+
+void add_brick_texture(uint32_t brick_id, uint8_t face, GLuint texture) {
+	world->bricks[brick_id].texture_ids[face] = texture;
 }
 
 
@@ -857,8 +898,12 @@ void init_render() {	// setup and set shader program, GL states
 	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;\n"
 	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));	\n"
 	"	pxl_tex = vtx_tex;								\n"
-	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);	\n"
 	"	face_id = uint(gl_VertexID/4);					\n"
+	"	if(face_id == 1u || face_id == 3u) {			\n"	// top face and bottom face - scale tex coords by x,z
+	"		pxl_tex.x *= u_model[0][0];					\n"
+	"		pxl_tex.y *= u_model[2][2];					\n"
+	"	}												\n"
+	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);\n"
 	"}													";
 
 	const char* pxl_shader_src_3 =
@@ -870,6 +915,7 @@ void init_render() {	// setup and set shader program, GL states
 	"flat in uint face_id;								\n"
 	"uniform vec4 u_color;								\n"
 	"uniform float u_textured_faces[6];					\n"
+	"uniform sampler2D u_samplers[6];					\n"
 	"void main() {										\n"
 	"	vec3 light_col = vec3(.6,.6,.6);				\n"
 	"	vec3 norm = normalize(pxl_norm);				\n"	
@@ -878,8 +924,10 @@ void init_render() {	// setup and set shader program, GL states
 	"	vec3 diffuse = diff * light_col;				\n"
 	"	vec3 ambient = vec3(.6,.6,.6);					\n"
 	"	final = vec4(ambient+diffuse,1) * u_color;		\n"
-	"	if(u_textured_faces[face_id]>0.0) 				\n"
-	"		final = vec4(pxl_tex,0,1);					\n"
+	"	if(u_textured_faces[face_id]>0.0) { 			\n"
+	"		vec4 sample = texture(u_samplers[face_id],pxl_tex);\n"
+	"		final = sample + (final*(1.0-sample.w));	\n"
+	"	}												\n"
 	"}													";
 
 	create_program(vtx_shader_src_3, pxl_shader_src_3);
@@ -894,8 +942,7 @@ void render(uint8_t render_player) {
 	GLint proj_loc = glGetUniformLocation(program_id,"u_proj");
 	GLint color_loc = glGetUniformLocation(program_id,"u_color");
 	GLint faces_loc = glGetUniformLocation(program_id,"u_textured_faces");
-	GLfloat faces[] = { 0,0,0,0,0,0 };
-	glUniform1fv(faces_loc, 6, faces);
+	GLint samplers_loc = glGetUniformLocation(program_id,"u_samplers");
 
 	mat4 persp = perspective(fovy, window_width/window_height, near, far);
 	float mat_data[] = {
@@ -942,6 +989,9 @@ void render(uint8_t render_player) {
 	// in object space, center of player is (0,0,0)
 	// player has 6 parts - 2 arms, 2 legs, 1 torso, 1 head
 	if(render_player) {
+		GLfloat faces[] = { 0,0,0,0,0,0 };
+		glUniform1fv(faces_loc, 6, faces);
+
 		mesh_t mesh = meshes[0];
 		vec3 p_pos[] = {
 			{0,   0,0},		// torso
@@ -1010,6 +1060,18 @@ void render(uint8_t render_player) {
 	for(uint32_t i = 0; i < world->n_bricks; i++) {
 		brick_t brick = world->bricks[i];
 		mesh_t mesh = meshes[brick.mesh_id];
+
+		GLfloat faces[6];
+		for(uint32_t f = 0; f < 6; f++)
+			faces[f] = brick.texture_ids[f] ? 1 : 0;
+		glUniform1fv(faces_loc, 6, faces);
+		for(uint32_t f = 0; f < 6; f++) {
+			glActiveTexture(GL_TEXTURE0+f);
+			glBindTexture(GL_TEXTURE_2D,brick.texture_ids[f]);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		}
+		GLint units[] = { 0,1,2,3,4,5 };
+		glUniform1iv(samplers_loc, 6, units);
 
 		// calculate model matrix
 		mat4 smat = scale(brick.scale);
@@ -1276,6 +1338,9 @@ int main() {
 	init_gl();
 	init_mesh();
 	init_render();
+
+	load_texture_from_file("top.png");			// texture 0 - brick top
+	load_texture_from_file("bottom.png");		// texture 1 - brick bottom
 
 	vec3 pos = { 0,-10,0 };
 	vec3 rot = { 0,0,0 };
