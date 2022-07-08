@@ -28,9 +28,9 @@ V - toggle noclip mode
 
 R - reset player position to (0,0,0)
 
-Space - jump (noclip disabled) or descend (noclip enabled)
+Space - jump (noclip disabled) or ascend (noclip enabled)
 
-Shift - ascend (noclip enabled)
+Shift - descend (noclip enabled)
 
 ## Features
 
