@@ -127,6 +127,7 @@ uint32_t create_mesh(float* vtx_data, uint16_t* idx_data, uint32_t vbo_size, uin
 
 // create the default brick mesh (1x1x1)
 void init_mesh() {
+	// 12 triangles (36 indices)
 	uint16_t ibo_data[] = {
 		0, 	1,	2,	 2, 1, 	3,
 		4, 	5,	6,	 6, 5, 	7,
@@ -136,33 +137,33 @@ void init_mesh() {
 		20, 21, 22, 22, 21, 23 };
 	// 24 vertices (3 different vertices per corner, as each corner is shared by 3 faces)
 	float vbo_data[] = {
-		-0.5, -0.5, 0.5,	0, 0, 1,
-		0.5, -0.5, 0.5,		0, 0, 1, 
-		-0.5, 0.5, 0.5,		0, 0, 1, 
-		0.5, 0.5, 0.5,		0, 0, 1, 
-		-0.5, 0.5, 0.5,		0, 1, 0, 
-		0.5, 0.5, 0.5,		0, 1, 0, 
-		-0.5, 0.5, -0.5,	0, 1, 0, 
-		0.5, 0.5, -0.5,		0, 1, 0, 
-		-0.5, 0.5, -0.5,	0, 0, -1, 
-		0.5, 0.5, -0.5,		0, 0, -1, 
-		-0.5, -0.5, -0.5,	0, 0, -1, 
-		0.5, -0.5, -0.5,	0, 0, -1, 
-		-0.5, -0.5, -0.5,	0, -1, 0, 
-		0.5, -0.5, -0.5,	0, -1, 0, 
-		-0.5, -0.5, 0.5,	0, -1, 0, 
-		0.5, -0.5, 0.5,		0, -1, 0, 
-		0.5, -0.5, 0.5,		1, 0, 0, 
-		0.5, -0.5, -0.5,	1, 0, 0, 
-		0.5, 0.5, 0.5,		1, 0, 0, 
-		0.5, 0.5, -0.5,		1, 0, 0, 
-		-0.5, -0.5, -0.5,	-1, 0, 0, 
-		-0.5, -0.5, 0.5,	-1, 0, 0, 
-		-0.5, 0.5, -0.5,	-1, 0, 0, 
-		-0.5, 0.5, 0.5,		-1, 0, 0
+		-0.5, -0.5, 0.5,	0, 0, 1,	0, 0,
+		0.5, -0.5, 0.5,		0, 0, 1,	0, 1,
+		-0.5, 0.5, 0.5,		0, 0, 1,	1, 0,
+		0.5, 0.5, 0.5,		0, 0, 1,	1, 1,
+		-0.5, 0.5, 0.5,		0, 1, 0,	0, 0,
+		0.5, 0.5, 0.5,		0, 1, 0,	0, 1,
+		-0.5, 0.5, -0.5,	0, 1, 0,	1, 0,
+		0.5, 0.5, -0.5,		0, 1, 0,	1, 1,
+		-0.5, 0.5, -0.5,	0, 0, -1,	0, 0,
+		0.5, 0.5, -0.5,		0, 0, -1,	0, 1,
+		-0.5, -0.5, -0.5,	0, 0, -1,	1, 0,
+		0.5, -0.5, -0.5,	0, 0, -1,	1, 1,
+		-0.5, -0.5, -0.5,	0, -1, 0,	0, 0,
+		0.5, -0.5, -0.5,	0, -1, 0,	0, 1,
+		-0.5, -0.5, 0.5,	0, -1, 0,	1, 0,
+		0.5, -0.5, 0.5,		0, -1, 0,	1, 1,
+		0.5, -0.5, 0.5,		1, 0, 0,	0, 0,
+		0.5, -0.5, -0.5,	1, 0, 0,	0, 1,
+		0.5, 0.5, 0.5,		1, 0, 0,	1, 0,
+		0.5, 0.5, -0.5,		1, 0, 0,	1, 1,
+		-0.5, -0.5, -0.5,	-1, 0, 0,	0, 0,
+		-0.5, -0.5, 0.5,	-1, 0, 0,	0, 1,
+		-0.5, 0.5, -0.5,	-1, 0, 0,	1, 0,
+		-0.5, 0.5, 0.5,		-1, 0, 0,	1, 1
 	};
 
-	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 1);
+	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 2);
 }
 
 /*==================================================*/
@@ -817,9 +818,9 @@ void init_render() {	// setup and set shader program, GL states
 	"out vec3 pxl_pos;									\n"
 	"uniform mat4 u_model, u_view, u_proj;				\n"
 	"void main() {										\n"	
-	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;"
-	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));		\n"
-	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);	\n"
+	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;\n"
+	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));	\n"
+	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);\n"
 	"}													";
 
 	const char* pxl_shader_src_2 =
@@ -830,7 +831,7 @@ void init_render() {	// setup and set shader program, GL states
 	"uniform vec4 u_color;								\n"
 	"void main() {										\n"
 	"	vec3 light_pos = vec3(75,50,50);				\n"
-	"	vec3 light_col = vec3(.6,.6,.6);					\n"
+	"	vec3 light_col = vec3(.6,.6,.6);				\n"
 	"	vec3 norm = normalize(pxl_norm);				\n"	
 	//"	vec3 light_dir = normalize(light_pos - pxl_pos);\n"			// from light position to object (point light)
 	"	vec3 light_dir = normalize(-vec3(-0.2f, -1.0f, -1.5f));\n"	// directional light
@@ -841,15 +842,60 @@ void init_render() {	// setup and set shader program, GL states
 	"}													";
 
 	create_program(vtx_shader_src_2, pxl_shader_src_2);
+
+	const char* vtx_shader_src_3 =
+	"#version 330										\n"
+	"layout(location=0) in vec3 vtx_pos;				\n"
+	"layout(location=1) in vec3 vtx_norm;				\n"
+	"layout(location=2) in vec2 vtx_tex;				\n"
+	"out vec3 pxl_norm;									\n"
+	"out vec3 pxl_pos;									\n"
+	"out vec2 pxl_tex;									\n"
+	"flat out uint face_id;								\n"
+	"uniform mat4 u_model, u_view, u_proj;				\n"
+	"void main() {										\n"	
+	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;\n"
+	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));	\n"
+	"	pxl_tex = vtx_tex;								\n"
+	"	gl_Position = u_proj * u_view * u_model * vec4(vtx_pos,1);	\n"
+	"	face_id = uint(gl_VertexID/4);					\n"
+	"}													";
+
+	const char* pxl_shader_src_3 =
+	"#version 330										\n"
+	"layout(location=0) out vec4 final;					\n"
+	"in vec3 pxl_norm;									\n"
+	"in vec3 pxl_pos;									\n"
+	"in vec2 pxl_tex;									\n"
+	"flat in uint face_id;								\n"
+	"uniform vec4 u_color;								\n"
+	"uniform float u_textured_faces[6];					\n"
+	"void main() {										\n"
+	"	vec3 light_col = vec3(.6,.6,.6);				\n"
+	"	vec3 norm = normalize(pxl_norm);				\n"	
+	"	vec3 light_dir = normalize(-vec3(-0.2f, -1.0f, -1.5f));\n"	// directional light
+	"	float diff = max(dot(norm, light_dir), 0.0);	\n"
+	"	vec3 diffuse = diff * light_col;				\n"
+	"	vec3 ambient = vec3(.6,.6,.6);					\n"
+	"	final = vec4(ambient+diffuse,1) * u_color;		\n"
+	"	if(u_textured_faces[face_id]>0.0) 				\n"
+	"		final = vec4(pxl_tex,0,1);					\n"
+	"}													";
+
+	create_program(vtx_shader_src_3, pxl_shader_src_3);
 }
 
 void render(uint8_t render_player) {
 	// get all needed uniform IDs from shader program
-	glUseProgram(program_ids[1]);
-	GLint model_loc = glGetUniformLocation(program_ids[1],"u_model");
-	GLint view_loc = glGetUniformLocation(program_ids[1],"u_view");
-	GLint proj_loc = glGetUniformLocation(program_ids[1],"u_proj");
-	GLint color_loc = glGetUniformLocation(program_ids[1],"u_color");
+	GLuint program_id = program_ids[2];
+	glUseProgram(program_id);
+	GLint model_loc = glGetUniformLocation(program_id,"u_model");
+	GLint view_loc = glGetUniformLocation(program_id,"u_view");
+	GLint proj_loc = glGetUniformLocation(program_id,"u_proj");
+	GLint color_loc = glGetUniformLocation(program_id,"u_color");
+	GLint faces_loc = glGetUniformLocation(program_id,"u_textured_faces");
+	GLfloat faces[] = { 0,0,0,0,0,0 };
+	glUniform1fv(faces_loc, 6, faces);
 
 	mat4 persp = perspective(fovy, window_width/window_height, near, far);
 	float mat_data[] = {

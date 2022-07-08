@@ -18,6 +18,7 @@ Finished create_mesh(), init_mesh() now uses it
 Switched default mesh to vtx_format 1 - now has normals
 Added create_program() for creating a new GL program given shader strings and adding it to a global array
 Implemented basic directional lighting using normals
+Added texture coordinates to default mesh, and per-face texture toggling support
 
 
 
