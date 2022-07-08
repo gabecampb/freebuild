@@ -2,6 +2,8 @@
 
 A 3D brick building sandbox game.
 
+![Screenshot](screenshot.png)
+
 ## Building
 
 This project aims to be self-contained C code. The only third-party dependency is GLFW.
@@ -38,9 +40,7 @@ Shift - ascend (noclip enabled)
 
 ✓ Gravity, jumping, stair climbing
 
-✓ Directional lighting
-
-_ Model texturing
+✓ Model texturing
 
 _ Entities
 
