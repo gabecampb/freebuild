@@ -30,8 +30,14 @@ Texture binding and sampling added in render(), added stud textures
 Shader now scales texture coordinates for all faces of bricks by the brick's scale
 
 
+2022-07-09
+==========
 
-(WIP) Create zombie AI using new entities system entity_t - player_t pos, quat replaced by entity_t
-	There will be multiple humanoid entities in a game - rendered as character. There will be several AI modes -
-	random walking mode and a mode to chase any specified entitity.
+Added toggle for whether or not to repeat textures on each stud of a brick's face
+Bricks with gravity but without colliders still fall
+Created entities system, player_t is now just an entity
+
+
+
+(WIP) Entity chasing and random walking AI
 (WIP) Create start of HUD system (show health, which is stored in player_t's entity_t)

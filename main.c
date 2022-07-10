@@ -43,6 +43,7 @@ typedef struct brick_t brick_t;
 typedef struct collision_t collision_t;
 typedef struct camera_t camera_t;
 void add_brick_collider_aabb(int32_t brick_id);
+uint32_t add_collider_aabb(vec3 pos, vec3 scale);
 
 typedef struct camera_t {
 	vec3 pos;
@@ -51,14 +52,10 @@ typedef struct camera_t {
 } camera_t;
 
 typedef struct player_t {
+	uint32_t entity_id;
 	char* name;
-	vec3 pos;
-	vec4 quat;
 	camera_t camera;
 	uint8_t focused;
-	uint32_t jump_state;	// 0=able to jump, 1=cannot jump; mid-jump or falling
-	float fall_distance;
-	uint32_t coll_id;
 } player_t;
 
 player_t* player;
@@ -209,6 +206,7 @@ typedef struct brick_t {
 	vec3 pos, scale;
 	vec4 quat, color;
 	GLuint texture_ids[6];	// for each face, the ID of a texture. 0 if untextured.
+	uint8_t repeat_textures[6];
 	uint8_t has_gravity, has_collision;
 } brick_t;
 
@@ -243,12 +241,56 @@ void add_brick(world_t* world, vec3 pos, vec4 quat, vec3 scale, vec4 color, uint
 	memset(&new_brick.texture_ids,0,sizeof(GLuint)*6);
 	new_brick.texture_ids[1] = gl_textures[0];	// top
 	new_brick.texture_ids[3] = gl_textures[1];	// bottom
+	new_brick.repeat_textures[1] = 1;
+	new_brick.repeat_textures[3] = 1;
 	world->bricks[world->n_bricks++] = new_brick;
 	if(has_collision) add_brick_collider_aabb(world->n_bricks-1);
 }
 
-void add_brick_texture(uint32_t brick_id, uint8_t face, GLuint texture) {
+void add_brick_texture(uint32_t brick_id, uint8_t face, GLuint texture, uint8_t repeat) {
 	world->bricks[brick_id].texture_ids[face] = texture;
+	world->bricks[brick_id].repeat_textures[face] = repeat;
+}
+
+
+/*==================================================*/
+/*				ENTITIES AND MANAGEMENT				*/
+/*==================================================*/
+
+typedef struct entity_t {
+	vec3 pos;
+	vec4 quat;
+	uint8_t is_humanoid;	// whether or not to render as a character
+	uint32_t mesh_id;		// mesh to render as; ignored if is_humanoid
+	uint32_t coll_id;
+
+	// for humanoids
+	uint32_t jump_state;	// 0=able to jump, 1=cannot jump; mid-jump or falling
+	float fall_distance;	// distance fallen without collision
+	float health;			// 0-1
+	vec4 part_colors[6];	// torso, left arm, right arm, left leg, right leg, head
+} entity_t;
+
+entity_t* entities;
+uint32_t n_entities;
+
+uint32_t add_humanoid_entity(vec3 pos, vec4 quat, float health, vec4* colors) {
+	entity_t new_entity;
+	memset(&new_entity,0,sizeof(entity_t));
+	new_entity.pos = pos;
+	new_entity.quat = quat;
+	new_entity.is_humanoid = 1;
+	new_entity.health = health;
+	new_entity.jump_state = 1;
+	for(uint32_t i = 0; i < 6; i++)
+		new_entity.part_colors[i] = colors[i];
+	vec3 aabb_scale = {2,4,2};
+	vec3 aabb_pos = new_entity.pos;
+	aabb_pos.y -= 1;
+	new_entity.coll_id = add_collider_aabb(aabb_pos, aabb_scale);
+	entities = realloc(entities, sizeof(entity_t)*(n_entities+1));
+	entities[n_entities] = new_entity;
+	return n_entities++;
 }
 
 
@@ -275,7 +317,7 @@ void add_brick_collider_aabb(int32_t brick_id) {
 }
 	
 // calc + add a new collider (returns collider ID)
-uint32_t add_new_collider_aabb(vec3 pos, vec3 scale) {
+uint32_t add_collider_aabb(vec3 pos, vec3 scale) {
 	vec3 half_scale = __scale_vec3(scale, 0.5);
 	pos = __sub_vec3(pos, half_scale);
 	collision_t coll = { pos, scale, -1 };
@@ -303,7 +345,7 @@ uint8_t check_collision_aabb(uint32_t coll_id) {
 // step the physics simulation
 void physics_step() {
 	float gravity_step = 0.1;
-	// for each collider with gravity, check if going down some is possible
+	// for each brick collider with gravity, check if going down some is possible
 	for(uint32_t i = 0; i < world->n_colls; i++)
 		if(world->colls[i].brick_id != -1 && world->bricks[world->colls[i].brick_id].has_gravity) {
 			world->colls[i].pos.y -= gravity_step;
@@ -312,18 +354,25 @@ void physics_step() {
 				world->colls[i].pos.y += gravity_step;
 				world->bricks[world->colls[i].brick_id].pos.y += gravity_step;
 			}
-		} else if(world->colls[i].brick_id == -1 && player->coll_id == i) {
-			world->colls[i].pos.y -= gravity_step;
-			player->pos.y -= gravity_step;
-			player->jump_state = 1;
-			player->fall_distance += gravity_step;
-			if(check_collision_aabb(i)) {
-				world->colls[i].pos.y += gravity_step;
-				player->pos.y += gravity_step;
-				player->jump_state = 0;						// on the ground; can jump again
-				player->fall_distance = 0;
-			}
 		}
+	// for each entity's collider, check if going down some is possible
+	for(uint32_t i = 0; i < n_entities; i++) {
+		entity_t* entity = &entities[i];
+		world->colls[entity->coll_id].pos.y -= gravity_step;
+		entity->pos.y -= gravity_step;
+		entity->jump_state = 1;
+		entity->fall_distance += gravity_step;
+		if(check_collision_aabb(entity->coll_id)) {
+			world->colls[i].pos.y += gravity_step;
+			entity->pos.y += gravity_step;
+			entity->jump_state = 0;						// on the ground; can jump again
+			entity->fall_distance = 0;
+		}
+	}
+	// for each brick with gravity and no collider, move down some
+	for(uint32_t i = 0; i < world->n_bricks; i++)
+		if(world->bricks[i].has_gravity && !world->bricks[i].has_collision)
+			world->bricks[i].pos.y -= gravity_step;
 }
 
 void translate_brick(int32_t brick_id, vec3 translation) {
@@ -730,41 +779,47 @@ player_t init_player(char* name) {
 	memset(&new_player,0,sizeof(player_t));
 	new_player.name = calloc(1,strlen(name)+1);
 	strcpy(new_player.name,name);
-	vec3 rot = { 0,0,0 };
-	new_player.quat = euler_to_quat(rot);
+	vec3 pos = {0,0,0}, rot = { 0,0,0 };
+	vec4 quat = euler_to_quat(rot);
+	vec4 p_colors[] = {
+		{0,0,1,1},
+		{1,1,0,1},
+		{1,1,0,1},
+		{0,1,0,1},
+		{0,1,0,1},
+		{1,1,0,1}
+	};
+	new_player.entity_id = add_humanoid_entity(pos,quat,1,p_colors);
 	new_player.camera.quat = euler_to_quat(rot);
 	new_player.camera.zoom = 10;
-	new_player.jump_state = 1;
-	vec3 aabb_scale = {2,4,2};
-	vec3 aabb_pos = new_player.pos;
-	aabb_pos.y -= 1;
-	new_player.coll_id = add_new_collider_aabb(aabb_pos, aabb_scale);
 	return new_player;
 }
 
 // sets player position and updates player's AABB
 void set_player_pos(vec3 new_pos) {
-	player->pos = new_pos;
-	vec3 half_scale = __scale_vec3(world->colls[player->coll_id].dim, 0.5);
+	entity_t* entity = &entities[player->entity_id];
+	entity->pos = new_pos;
+	vec3 half_scale = __scale_vec3(world->colls[entity->coll_id].dim, 0.5);
 	vec3 aabb_pos = __sub_vec3(new_pos, half_scale);
 	aabb_pos.y -= 1;
-	world->colls[player->coll_id].pos = aabb_pos;
+	world->colls[entity->coll_id].pos = aabb_pos;
 }
 
 void translate_player(vec3 translation) {
-	player->pos = __add_vec3(player->pos, translation);
-	world->colls[player->coll_id].pos = __add_vec3(world->colls[player->coll_id].pos, translation);
-	if(check_collision_aabb(player->coll_id)) {
+	entity_t* entity = &entities[player->entity_id];
+	entity->pos = __add_vec3(entity->pos, translation);
+	world->colls[entity->coll_id].pos = __add_vec3(world->colls[entity->coll_id].pos, translation);
+	if(check_collision_aabb(entity->coll_id)) {
 		// check if small increase in Y would help before resetting (allows stair climbing)
 		vec3 step = { 0,1.25,0 };
-		player->pos = __add_vec3(player->pos, step);
-		world->colls[player->coll_id].pos = __add_vec3(world->colls[player->coll_id].pos, step);
-		if(!check_collision_aabb(player->coll_id)) return;
+		entity->pos = __add_vec3(entity->pos, step);
+		world->colls[entity->coll_id].pos = __add_vec3(world->colls[entity->coll_id].pos, step);
+		if(!check_collision_aabb(entity->coll_id)) return;
 
-		player->pos = __sub_vec3(player->pos, translation);
-		player->pos = __sub_vec3(player->pos, step);
-		world->colls[player->coll_id].pos = __sub_vec3(world->colls[player->coll_id].pos, translation);
-		world->colls[player->coll_id].pos = __sub_vec3(world->colls[player->coll_id].pos, step);
+		entity->pos = __sub_vec3(entity->pos, translation);
+		entity->pos = __sub_vec3(entity->pos, step);
+		world->colls[entity->coll_id].pos = __sub_vec3(world->colls[entity->coll_id].pos, translation);
+		world->colls[entity->coll_id].pos = __sub_vec3(world->colls[entity->coll_id].pos, step);
 	}
 }
 
@@ -893,17 +948,18 @@ void init_render() {	// setup and set shader program, GL states
 	"out vec3 pxl_pos;									\n"
 	"out vec2 pxl_tex;									\n"
 	"flat out uint face_id;								\n"
+	"uniform float u_textured_faces[6];					\n"
 	"uniform mat4 u_model, u_view, u_proj;				\n"
 	"void main() {										\n"	
 	"	pxl_norm = mat3(transpose(inverse(u_model))) * vtx_norm;\n"
 	"	pxl_pos = vec3(u_model * vec4(vtx_pos,1.0));	\n"
 	"	pxl_tex = vtx_tex;								\n"
 	"	face_id = uint(gl_VertexID/4);					\n"
-	"	if(face_id == 1u || face_id == 3u) {			\n"	// top/bottom face - scale tex coords by x,z
+	"	if((face_id == 1u || face_id == 3u) && u_textured_faces[face_id] == 1.0) {			\n"	// top/bottom face - scale tex coords by x,z
 	"		pxl_tex.x *= u_model[2][2];					\n"
 	"		pxl_tex.y *= u_model[0][0];					\n"
 	"	}												\n"
-	"	if(face_id == 4u || face_id == 5u) {			\n"	// left/right face - scale tex coords by y,z
+	"	if((face_id == 4u || face_id == 5u) && u_textured_faces[face_id] == 1.0) {			\n"	// left/right face - scale tex coords by y,z
 	"		pxl_tex.x *= u_model[1][1];					\n"
 	"		pxl_tex.y *= u_model[2][2];					\n"
 	"	}												\n"
@@ -945,7 +1001,7 @@ void init_render() {	// setup and set shader program, GL states
 	create_program(vtx_shader_src_3, pxl_shader_src_3);
 }
 
-void render(uint8_t render_player) {
+void render(uint8_t render_entities) {
 	// get all needed uniform IDs from shader program
 	GLuint program_id = program_ids[2];
 	glUseProgram(program_id);
@@ -974,7 +1030,7 @@ void render(uint8_t render_player) {
 	else {
 		// update player camera
 		// eye vector should be 10 studs away from player position, in reverse of whichever direction the camera is facing.
-		player->camera.pos = player->pos;
+		player->camera.pos = entities[player->entity_id].pos;
 
 		// circle point around the player (XZ plane)
 		vec4 c4 = { 0,0,player->camera.zoom,1 };
@@ -996,11 +1052,11 @@ void render(uint8_t render_player) {
 	};
 	glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view_data[0]);
 
-	// render player - a hard-coded collection of brick meshes in different positions/scales.
-	//						arms + legs are 1x2x1. head is 2x1x1. torso is 2x2x1.
-	// in object space, center of player is (0,0,0)
-	// player has 6 parts - 2 arms, 2 legs, 1 torso, 1 head
-	if(render_player) {
+	// render all entities.
+	if(render_entities)
+	for(uint32_t i = 0; i < n_entities; i++) {
+		if(!entities[i].is_humanoid) continue;
+		entity_t* entity = &entities[i];
 		GLfloat faces[] = { 0,0,0,0,0,0 };
 		glUniform1fv(faces_loc, 6, faces);
 
@@ -1009,9 +1065,9 @@ void render(uint8_t render_player) {
 			{0,   0,0},		// torso
 			{1.5, 0,0},		// left arm
 			{-1.5,0,0},		// right arm
-			{-.5, -1,0},		// left leg
-			{.5,  -1,0},		// right leg
-			{0,   1.5,0}		// head
+			{-.5, -1,0},	// left leg
+			{.5,  -1,0},	// right leg
+			{0,   1.5,0}	// head
 		};
 		vec3 p_scale[] = {
 			{2,2,1},
@@ -1021,30 +1077,22 @@ void render(uint8_t render_player) {
 			{1,2,1},
 			{2,1,1}
 		};
-		vec4 p_color[] = {
-			{0,0,1,1},
-			{1,1,0,1},
-			{1,1,0,1},
-			{0,1,0,1},
-			{0,1,0,1},
-			{1,1,0,1}
-		};
 
-		if(player->jump_state == 1 && player->fall_distance > 6) {	// falling or jumping
+		if(entity->jump_state == 1 && entity->fall_distance > 6) {	// falling or jumping
 			p_pos[1].y = .5;
 			p_pos[2].y = .5;
 		}
 
-		for(uint32_t i = 0; i < 6; i++) {
+		for(uint32_t j = 0; j < 6; j++) {
 			// calculate model matrix
-			mat4 smat = scale(p_scale[i]);
-			mat4 rmat = quat_to_mat4(player->quat);
+			mat4 smat = scale(p_scale[j]);
+			mat4 rmat = quat_to_mat4(entity->quat);
 			// translate parts to their correct position in object space,
 			// then scale, then rotate, then translate to where the player is in the world.
-			mat4 tmat = translate(p_pos[i]);
+			mat4 tmat = translate(p_pos[j]);
 			mat4 model = mat4_mat4(rmat,smat);	// scale, then rotate
 			model = mat4_mat4(model,tmat);	// translate parts to where they should be
-			tmat = translate(player->pos);
+			tmat = translate(entity->pos);
 			model = mat4_mat4(tmat,model);		// apply translation
 			float mat_data[] = {
 				model.m00, model.m10, model.m20, model.m30,
@@ -1054,7 +1102,7 @@ void render(uint8_t render_player) {
 			};
 
 			// update uniforms
-			glUniform4f(color_loc, p_color[i].x, p_color[i].y, p_color[i].z, p_color[i].w);
+			glUniform4f(color_loc, entity->part_colors[j].x, entity->part_colors[j].y, entity->part_colors[j].z, entity->part_colors[j].w);
 			glUniformMatrix4fv(model_loc, 1, GL_FALSE, &mat_data[0]);
 
 			// submit draw call
@@ -1074,8 +1122,12 @@ void render(uint8_t render_player) {
 		mesh_t mesh = meshes[brick.mesh_id];
 
 		GLfloat faces[6];
-		for(uint32_t f = 0; f < 6; f++)
-			faces[f] = brick.texture_ids[f] ? 1 : 0;
+		for(uint32_t f = 0; f < 6; f++) {
+			if(brick.texture_ids[f]) {
+				if(brick.repeat_textures[f]) faces[f] = 1;
+				else faces[f] = 2;
+			} else faces[f] = 0;
+		}
 		glUniform1fv(faces_loc, 6, faces);
 		for(uint32_t f = 0; f < 6; f++) {
 			glActiveTexture(GL_TEXTURE0+f);
@@ -1263,12 +1315,12 @@ void process_input() {
 				float angle = dir.z ? atan(dir.x/dir.z) : 0;
 				angle *= 57.2958;
 				vec3 player_rot = { 0,angle,0 };
-				player->quat = euler_to_quat(player_rot);
+				entities[player->entity_id].quat = euler_to_quat(player_rot);
 			}
 		}
-		if(kbd[5] && !player->jump_state) {
+		if(kbd[5] && !entities[player->entity_id].jump_state) {
 			v.y = 4; translate_player(v);
-			player->jump_state = 1;
+			entities[player->entity_id].jump_state = 1;
 		}
 
 		if(kbd[6]) { v.y = 1; player->camera.quat = rotate_quat(player->camera.quat,v); }
