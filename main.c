@@ -10,6 +10,7 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <float.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -56,6 +57,7 @@ typedef struct player_t {
 	char* name;
 	camera_t camera;
 	uint8_t focused;
+	int32_t selected_brick_id;
 } player_t;
 
 player_t* player;
@@ -201,6 +203,13 @@ GLuint load_texture_from_file(char* path) {
 /*				WORLD DATA AND MANAGEMENT			*/
 /*==================================================*/
 
+typedef struct collision_t {
+	vec3 pos;		// minimum
+	vec3 dim;
+	int32_t brick_id;				// -1 if not a brick collider
+	uint8_t deleted;
+} collision_t;
+
 typedef struct brick_t {
 	uint32_t mesh_id;
 	vec3 pos, scale;
@@ -208,6 +217,7 @@ typedef struct brick_t {
 	GLuint texture_ids[6];	// for each face, the ID of a texture. 0 if untextured.
 	uint8_t repeat_textures[6];
 	uint8_t has_gravity, has_collision;
+	uint8_t deleted;
 } brick_t;
 
 typedef struct world_t {
@@ -229,7 +239,6 @@ void init_world() {
 
 void add_brick(world_t* world, vec3 pos, vec4 quat, vec3 scale, vec4 color, uint32_t mesh_id,
 	uint8_t has_gravity, uint8_t has_collision) {
-	world->bricks = realloc(world->bricks, sizeof(brick_t)*(world->n_bricks+1));
 	brick_t new_brick;
 	new_brick.pos = pos;
 	new_brick.quat = quat;
@@ -243,8 +252,18 @@ void add_brick(world_t* world, vec3 pos, vec4 quat, vec3 scale, vec4 color, uint
 	new_brick.texture_ids[3] = gl_textures[1];	// bottom
 	new_brick.repeat_textures[1] = 1;
 	new_brick.repeat_textures[3] = 1;
+	new_brick.deleted = 0;
+	world->bricks = realloc(world->bricks, sizeof(brick_t)*(world->n_bricks+1));
 	world->bricks[world->n_bricks++] = new_brick;
 	if(has_collision) add_brick_collider_aabb(world->n_bricks-1);
+}
+
+void delete_brick(uint32_t brick_id) {
+	if(!world->bricks[brick_id].deleted) {
+		world->bricks[brick_id].deleted = 1;
+		for(uint32_t i = 0; i < world->n_colls; i++)
+			if(world->colls[i].brick_id == brick_id) world->colls[i].deleted = 1;
+	}
 }
 
 void add_brick_texture(uint32_t brick_id, uint8_t face, GLuint texture, uint8_t repeat) {
@@ -298,19 +317,13 @@ uint32_t add_humanoid_entity(vec3 pos, vec4 quat, float health, vec4* colors) {
 /*				PHYSICS								*/
 /*==================================================*/
 
-typedef struct collision_t {
-	vec3 pos;		// minimum
-	vec3 dim;
-	int32_t brick_id;				// -1 if not a brick collider
-} collision_t;
-
 // given a brick, calc + add a new collider
 void add_brick_collider_aabb(int32_t brick_id) {
 	brick_t brick = world->bricks[brick_id];
 	if(!brick.mesh_id) {		// default mesh has a known bounding box
 		vec3 half_scale = __scale_vec3(brick.scale, 0.5);
 		vec3 pos = __sub_vec3(brick.pos, half_scale);
-		collision_t coll = { pos, brick.scale, brick_id };
+		collision_t coll = { pos, brick.scale, brick_id, 0 };
 		world->colls = realloc(world->colls,sizeof(collision_t)*(world->n_colls+1));
 		world->colls[world->n_colls++] = coll;
 	} else printf("error in add_brick_collider_aabb: auto-calculation of bounding box only implemented for default brick mesh\n");
@@ -320,7 +333,7 @@ void add_brick_collider_aabb(int32_t brick_id) {
 uint32_t add_collider_aabb(vec3 pos, vec3 scale) {
 	vec3 half_scale = __scale_vec3(scale, 0.5);
 	pos = __sub_vec3(pos, half_scale);
-	collision_t coll = { pos, scale, -1 };
+	collision_t coll = { pos, scale, -1, 0 };
 	world->colls = realloc(world->colls,sizeof(collision_t)*(world->n_colls+1));
 	world->colls[world->n_colls] = coll;
 	return world->n_colls++;
@@ -331,7 +344,7 @@ uint8_t check_collision_aabb(uint32_t coll_id) {
 	collision_t coll = world->colls[coll_id];
 	vec3 coll_max = __add_vec3(coll.pos,coll.dim);
 	for(uint32_t i = 0; i < world->n_colls; i++) {
-		if(i == coll_id) continue;
+		if(i == coll_id || world->colls[i].deleted) continue;
 		vec3 min = world->colls[i].pos;
 		vec3 max = __add_vec3(min,world->colls[i].dim);
 		if((coll.pos.x <= max.x && coll_max.x >= min.x)
@@ -342,12 +355,74 @@ uint8_t check_collision_aabb(uint32_t coll_id) {
 	return 0;
 }
 
+typedef struct intersection_t {
+	float t;				// distance from origin to intersection
+	uint32_t coll_id;		// ID of collider intersected with
+} intersection_t;
+
+// check if a ray collides with any collider; if so, return ID of the collider, otherwise return -1
+// 'intersection' is newly allocated list of collider IDs that the ray intersects with, and set to 0 if there's no intersections
+// returns number of intersections (the closest intersection, if closest_hit is non-zero)
+uint32_t check_ray_intersection(vec3 ray_pos, vec3 ray_dir, intersection_t** intersections_ret, uint8_t closest_hit) {
+	if(!intersections_ret) {
+		printf("internal error at check_ray_intersection: intersections arg is 0.\n");
+		exit(1);
+	}
+
+	uint32_t n_intersections = 0;
+	intersection_t* intersections = 0;
+
+	for(uint32_t i = 0; i < world->n_colls; i++) {
+		if(world->colls[i].deleted) continue;
+		vec3 bmin = world->colls[i].pos;
+		vec3 bmax = __add_vec3(world->colls[i].pos,world->colls[i].dim);
+
+		vec3 dirfrac = { 1.0f/ray_dir.x, 1.0f/ray_dir.y, 1.0f/ray_dir.z };
+		float t1 = (bmin.x - ray_pos.x)*dirfrac.x;
+		float t2 = (bmax.x - ray_pos.x)*dirfrac.x;
+		float t3 = (bmin.y - ray_pos.y)*dirfrac.y;
+		float t4 = (bmax.y - ray_pos.y)*dirfrac.y;
+		float t5 = (bmin.z - ray_pos.z)*dirfrac.z;
+		float t6 = (bmax.z - ray_pos.z)*dirfrac.z;
+
+		float tmin = fmaxf(fmaxf(fminf(t1, t2), fminf(t3, t4)), fminf(t5, t6));
+		float tmax = fminf(fminf(fmaxf(t1, t2), fmaxf(t3, t4)), fmaxf(t5, t6));
+
+		if(tmax < 0) continue;			// intersection, but AABB is behind ray
+		if(tmin > tmax) continue;		// no intersection
+
+		// intersection; add to intersections list
+		intersection_t new_intersection;
+		new_intersection.t = tmin;		// length of ray until intersection
+		new_intersection.coll_id = i;
+		intersections = realloc(intersections, sizeof(intersection_t)*(n_intersections+1));
+		intersections[n_intersections++] = new_intersection;
+	}
+
+	if(closest_hit && n_intersections) {	// return only the closest hit in the 'intersections' array (lowest 't' value)
+		uint32_t min_idx = 0;
+		float min_t = FLT_MAX;
+		for(uint32_t i = 0; i < n_intersections; i++)
+			if(intersections[i].t < min_t) {
+				min_idx = i;
+				min_t = intersections[i].t;
+			}
+		intersections[0] = intersections[min_idx];
+		intersections = realloc(intersections,sizeof(intersection_t));
+		n_intersections = 1;
+	}
+
+	*intersections_ret = intersections;
+	return n_intersections;
+}
+
 // step the physics simulation
 void physics_step() {
 	float gravity_step = 0.1;
 	// for each brick collider with gravity, check if going down some is possible
 	for(uint32_t i = 0; i < world->n_colls; i++)
-		if(world->colls[i].brick_id != -1 && world->bricks[world->colls[i].brick_id].has_gravity) {
+		if(world->colls[i].brick_id != -1 && world->bricks[world->colls[i].brick_id].has_gravity
+		&& !world->bricks[world->colls[i].brick_id].deleted) {
 			world->colls[i].pos.y -= gravity_step;
 			world->bricks[world->colls[i].brick_id].pos.y -= gravity_step;
 			if(check_collision_aabb(i)) {
@@ -371,7 +446,7 @@ void physics_step() {
 	}
 	// for each brick with gravity and no collider, move down some
 	for(uint32_t i = 0; i < world->n_bricks; i++)
-		if(world->bricks[i].has_gravity && !world->bricks[i].has_collision)
+		if(world->bricks[i].has_gravity && !world->bricks[i].has_collision && !world->bricks[i].deleted)
 			world->bricks[i].pos.y -= gravity_step;
 }
 
@@ -543,9 +618,9 @@ vec4 __mult_vec4(vec4 a, vec4 b) {
 vec4 __mult_quat(vec4 a, vec4 b) {
 	vec4 prod = {
 		 a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x,
-	    -a.x * b.z + a.y * b.w + a.z * b.x + a.w * b.y,
-	     a.x * b.y - a.y * b.x + a.z * b.w + a.w * b.z,
-	    -a.x * b.x - a.y * b.y - a.z * b.z + a.w * b.w
+		-a.x * b.z + a.y * b.w + a.z * b.x + a.w * b.y,
+		 a.x * b.y - a.y * b.x + a.z * b.w + a.w * b.z,
+		-a.x * b.x - a.y * b.y - a.z * b.z + a.w * b.w
 	};
 	return prod;
 }
@@ -792,6 +867,7 @@ player_t init_player(char* name) {
 	new_player.entity_id = add_humanoid_entity(pos,quat,1,p_colors);
 	new_player.camera.quat = euler_to_quat(rot);
 	new_player.camera.zoom = 10;
+	new_player.selected_brick_id = -1;
 	return new_player;
 }
 
@@ -1124,6 +1200,7 @@ void render(uint8_t render_entities) {
 
 	// render all bricks.
 	for(uint32_t i = 0; i < world->n_bricks; i++) {
+		if(world->bricks[i].deleted) continue;
 		brick_t brick = world->bricks[i];
 		mesh_t mesh = meshes[brick.mesh_id];
 
@@ -1202,6 +1279,7 @@ void render_physics() {
 
 	// render all colliders
 	for(uint32_t i = 0; i < world->n_colls; i++) {
+		if(world->colls[i].deleted) continue;
 		collision_t coll = world->colls[i];
 		mesh_t mesh = meshes[0];
 
@@ -1262,6 +1340,56 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		if(key == 10) { vec3 p = {0,0,0}; set_player_pos(p); }
 		kbd[key] = 1;
 	} else if(action == GLFW_RELEASE) kbd[key] = 0;
+}
+
+uint8_t mouse_buttons[3];
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+	switch(button) {
+		case GLFW_MOUSE_BUTTON_LEFT: button = 0; break;
+		case GLFW_MOUSE_BUTTON_RIGHT: button = 1; break;
+		case GLFW_MOUSE_BUTTON_MIDDLE: button = 2; break;
+		default: return;
+	}
+	if(action == GLFW_PRESS) {
+		mouse_buttons[button] = 1;
+
+		if(!player->focused && mouse_buttons[0]) {	// left click - double click to delete a brick
+			vec4 d4 = { 0,0,-1,1 };
+			mat4 rot_matrix = quat_to_mat4(player->camera.quat);
+			d4 = mat4_vec4(rot_matrix, d4);
+			vec3 dir = { d4.x, d4.y, d4.z };
+			
+			intersection_t* ints = 0;
+			uint32_t n_ints = check_ray_intersection(player->camera.pos, dir, &ints, 1);
+
+			if(n_ints == 1) {
+				int32_t brick_id = world->colls[ints[0].coll_id].brick_id;
+				if(brick_id != -1) {
+					vec4 c = { 1,1,1,1 };
+					if(brick_id == player->selected_brick_id)
+						delete_brick(brick_id);
+					else player->selected_brick_id = brick_id;
+				}
+			} else player->selected_brick_id = -1;
+		}
+
+		if(!player->focused && mouse_buttons[1]) {	// right click - add a brick 10 studs in front of camera
+			vec4 d4 = { 0,0,-1,1 };
+			mat4 rot_matrix = quat_to_mat4(player->camera.quat);
+			d4 = mat4_vec4(rot_matrix, d4);
+			vec3 dir = { d4.x, d4.y, d4.z };
+			vec3 pos = player->camera.pos;
+			pos = __add_vec3(pos,__scale_vec3(dir,5));	// calculate position of new brick
+			pos.x = round(pos.x);
+			pos.y = round(pos.y);
+			pos.z = round(pos.z);
+			vec3 rot = { 0,0,0 };
+			vec4 quat = euler_to_quat(rot);
+			vec3 scale = { 1,1,1 };
+			vec4 color = { 0.5,0.5,0.5,1 };
+			add_brick(world, pos, quat, scale, color, 0, 0,1);
+		}
+	} else if(action == GLFW_RELEASE) mouse_buttons[button] = 0;
 }
 
 void process_input() {
@@ -1339,14 +1467,6 @@ void window_size_callback(GLFWwindow* window, int width, int height) {
 	window_width = width;
 	window_height = height;
 	glViewport(0,0,width,height);
-}
-
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-	switch(button) {
-		case GLFW_MOUSE_BUTTON_LEFT: break;
-		case GLFW_MOUSE_BUTTON_RIGHT: break;
-		case GLFW_MOUSE_BUTTON_MIDDLE: break;
-	}
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
