@@ -139,30 +139,30 @@ void init_mesh() {
 		20, 21, 22, 22, 21, 23 };
 	// 24 vertices (3 different vertices per corner, as each corner is shared by 3 faces)
 	float vbo_data[] = {
-		-0.5, -0.5, 0.5,	0, 0, 1,	0, 0,		// face 0
-		0.5, -0.5, 0.5,		0, 0, 1,	0, 1,
-		-0.5, 0.5, 0.5,		0, 0, 1,	1, 0,
-		0.5, 0.5, 0.5,		0, 0, 1,	1, 1,
-		-0.5, 0.5, 0.5,		0, 1, 0,	0, 0,		// face 1
-		0.5, 0.5, 0.5,		0, 1, 0,	0, 1,
-		-0.5, 0.5, -0.5,	0, 1, 0,	1, 0,
-		0.5, 0.5, -0.5,		0, 1, 0,	1, 1,
-		-0.5, 0.5, -0.5,	0, 0, -1,	1, 1,		// face 2
-		0.5, 0.5, -0.5,		0, 0, -1,	0, 1,
-		-0.5, -0.5, -0.5,	0, 0, -1,	1, 0,
-		0.5, -0.5, -0.5,	0, 0, -1,	0, 0,
-		-0.5, -0.5, -0.5,	0, -1, 0,	0, 0,		// face 3
-		0.5, -0.5, -0.5,	0, -1, 0,	0, 1,
-		-0.5, -0.5, 0.5,	0, -1, 0,	1, 0,
-		0.5, -0.5, 0.5,		0, -1, 0,	1, 1,
-		0.5, -0.5, 0.5,		1, 0, 0,	0, 0,		// face 4
-		0.5, -0.5, -0.5,	1, 0, 0,	0, 1,
-		0.5, 0.5, 0.5,		1, 0, 0,	1, 0,
-		0.5, 0.5, -0.5,		1, 0, 0,	1, 1,
-		-0.5, -0.5, -0.5,	-1, 0, 0,	0, 0,		// face 5
-		-0.5, -0.5, 0.5,	-1, 0, 0,	0, 1,
-		-0.5, 0.5, -0.5,	-1, 0, 0,	1, 0,
-		-0.5, 0.5, 0.5,		-1, 0, 0,	1, 1
+		0, 0, 1,	0, 0, 1,	0, 0,		// face 0
+		1, 0, 1,	0, 0, 1,	0, 1,
+		0, 1, 1,	0, 0, 1,	1, 0,
+		1, 1, 1,	0, 0, 1,	1, 1,
+		0, 1, 1,	0, 1, 0,	0, 0,		// face 1
+		1, 1, 1,	0, 1, 0,	0, 1,
+		0, 1, 0,	0, 1, 0,	1, 0,
+		1, 1, 0,	0, 1, 0,	1, 1,
+		0, 1, 0,	0, 0, -1,	1, 1,		// face 2
+		1, 1, 0,	0, 0, -1,	0, 1,
+		0, 0, 0,	0, 0, -1,	1, 0,
+		1, 0, 0,	0, 0, -1,	0, 0,
+		0, 0, 0,	0, -1, 0,	0, 0,		// face 3
+		1, 0, 0,	0, -1, 0,	0, 1,
+		0, 0, 1,	0, -1, 0,	1, 0,
+		1, 0, 1,	0, -1, 0,	1, 1,
+		1, 0, 1,	1, 0, 0,	0, 0,		// face 4
+		1, 0, 0,	1, 0, 0,	0, 1,
+		1, 1, 1,	1, 0, 0,	1, 0,
+		1, 1, 0,	1, 0, 0,	1, 1,
+		0, 0, 0,	-1, 0, 0,	0, 0,		// face 5
+		0, 0, 1,	-1, 0, 0,	0, 1,
+		0, 1, 0,	-1, 0, 0,	1, 0,
+		0, 1, 1,	-1, 0, 0,	1, 1
 	};
 
 	create_mesh(vbo_data, ibo_data, sizeof(vbo_data), sizeof(ibo_data), 2);
@@ -305,7 +305,9 @@ uint32_t add_humanoid_entity(vec3 pos, vec4 quat, float health, vec4* colors) {
 		new_entity.part_colors[i] = colors[i];
 	vec3 aabb_scale = {2,4,2};
 	vec3 aabb_pos = new_entity.pos;
-	aabb_pos.y -= 1;
+	aabb_pos.x -= 1;
+	aabb_pos.z -= 1;
+	aabb_pos.y -= 2;
 	new_entity.coll_id = add_collider_aabb(aabb_pos, aabb_scale);
 	entities = realloc(entities, sizeof(entity_t)*(n_entities+1));
 	entities[n_entities] = new_entity;
@@ -321,9 +323,7 @@ uint32_t add_humanoid_entity(vec3 pos, vec4 quat, float health, vec4* colors) {
 void add_brick_collider_aabb(int32_t brick_id) {
 	brick_t brick = world->bricks[brick_id];
 	if(!brick.mesh_id) {		// default mesh has a known bounding box
-		vec3 half_scale = __scale_vec3(brick.scale, 0.5);
-		vec3 pos = __sub_vec3(brick.pos, half_scale);
-		collision_t coll = { pos, brick.scale, brick_id, 0 };
+		collision_t coll = { brick.pos, brick.scale, brick_id, 0 };
 		world->colls = realloc(world->colls,sizeof(collision_t)*(world->n_colls+1));
 		world->colls[world->n_colls++] = coll;
 	} else printf("error in add_brick_collider_aabb: auto-calculation of bounding box only implemented for default brick mesh\n");
@@ -331,8 +331,6 @@ void add_brick_collider_aabb(int32_t brick_id) {
 	
 // calc + add a new collider (returns collider ID)
 uint32_t add_collider_aabb(vec3 pos, vec3 scale) {
-	vec3 half_scale = __scale_vec3(scale, 0.5);
-	pos = __sub_vec3(pos, half_scale);
 	collision_t coll = { pos, scale, -1, 0 };
 	world->colls = realloc(world->colls,sizeof(collision_t)*(world->n_colls+1));
 	world->colls[world->n_colls] = coll;
@@ -462,8 +460,7 @@ void translate_brick(int32_t brick_id, vec3 translation) {
 		for(uint32_t i = 0; i < world->n_colls; i++) {
 			if(world->colls[i].brick_id == brick_id) {
 				world->bricks[brick_id].pos = new_pos;
-				vec3 aabb_pos = __sub_vec3(new_pos,__scale_vec3(brick.scale,0.5));
-				world->colls[i].pos = aabb_pos;
+				world->colls[i].pos = new_pos;
 			}			
 		}
 	} else world->bricks[brick_id].pos = new_pos;
@@ -475,10 +472,8 @@ void set_brick_pos(uint32_t brick_id, vec3 new_pos) {
 	world->bricks[brick_id].pos = new_pos;
 	if(brick.has_collision)
 		for(uint32_t i = 0; i < world->n_colls; i++)
-			if(world->colls[i].brick_id == brick_id) {
-				vec3 aabb_pos = __sub_vec3(new_pos,__scale_vec3(brick.scale,0.5));
-				world->colls[i].pos = aabb_pos;
-			}
+			if(world->colls[i].brick_id == brick_id)
+				world->colls[i].pos = new_pos;
 }
 
 
@@ -877,7 +872,6 @@ void set_player_pos(vec3 new_pos) {
 	entity->pos = new_pos;
 	vec3 half_scale = __scale_vec3(world->colls[entity->coll_id].dim, 0.5);
 	vec3 aabb_pos = __sub_vec3(new_pos, half_scale);
-	aabb_pos.y -= 1;
 	world->colls[entity->coll_id].pos = aabb_pos;
 }
 
@@ -1144,12 +1138,12 @@ void render(uint8_t render_entities) {
 
 		mesh_t mesh = meshes[0];
 		vec3 p_pos[] = {
-			{0,   0,0},		// torso
-			{1.5, 0,0},		// left arm
-			{-1.5,0,0},		// right arm
-			{-.5, -1,0},	// left leg
-			{.5,  -1,0},	// right leg
-			{0,   1.5,0}	// head
+			{-.5, 0,-.5},	// torso
+			{-2,  0,-.5},	// left arm
+			{1,   0,-.5},	// right arm
+			{-1, -1,-.5},	// left leg
+			{0,  -1,-.5},	// right leg
+			{-.5, 2,-.5}	// head
 		};
 		vec3 p_scale[] = {
 			{2,2,1},
@@ -1285,7 +1279,7 @@ void render_physics() {
 
 		// calculate model matrix
 		mat4 smat = scale(coll.dim);
-		mat4 tmat = translate(__add_vec3(coll.pos,__scale_vec3(coll.dim,0.5)));		// how much to translate (re-set to origin)
+		mat4 tmat = translate(coll.pos);	// how much to translate
 		mat4 model = mat4_mat4(tmat,smat);	// scale, then translate
 		float mat_data[] = {
 			model.m00, model.m10, model.m20, model.m30,
@@ -1372,26 +1366,10 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 				}
 			} else player->selected_brick_id = -1;
 		}
-
-		if(!player->focused && mouse_buttons[1]) {	// right click - add a brick 10 studs in front of camera
-			vec4 d4 = { 0,0,-1,1 };
-			mat4 rot_matrix = quat_to_mat4(player->camera.quat);
-			d4 = mat4_vec4(rot_matrix, d4);
-			vec3 dir = { d4.x, d4.y, d4.z };
-			vec3 pos = player->camera.pos;
-			pos = __add_vec3(pos,__scale_vec3(dir,5));	// calculate position of new brick
-			pos.x = round(pos.x);
-			pos.y = round(pos.y);
-			pos.z = round(pos.z);
-			vec3 rot = { 0,0,0 };
-			vec4 quat = euler_to_quat(rot);
-			vec3 scale = { 1,1,1 };
-			vec4 color = { 0.5,0.5,0.5,1 };
-			add_brick(world, pos, quat, scale, color, 0, 0,1);
-		}
 	} else if(action == GLFW_RELEASE) mouse_buttons[button] = 0;
 }
 
+uint8_t prev_rmb;
 void process_input() {
 	if(scroll_y != prev_scroll_y && player->focused)
 		player->camera.zoom = fminf(fmaxf(player->camera.zoom+(prev_scroll_y-scroll_y),5),50);
@@ -1423,6 +1401,78 @@ void process_input() {
 		if(kbd[5]) player->camera.pos.y += .25;
 		if(kbd[6]) rot.y = 1; player->camera.quat = rotate_quat(player->camera.quat,rot);
 		if(kbd[7]) rot.y = -1; player->camera.quat = rotate_quat(player->camera.quat,rot);
+
+		// right click - add a 1x1x1 brick 10 studs in front of camera
+		vec4 d4 = { 0,0,-1,1 };
+		mat4 rot_matrix = quat_to_mat4(player->camera.quat);
+		d4 = mat4_vec4(rot_matrix, d4);
+		vec3 dir = { d4.x, d4.y, d4.z };
+		vec3 pos = player->camera.pos;
+		pos = __add_vec3(pos,__scale_vec3(dir,10));	// calculate position of new brick
+		pos.x = round(pos.x-.5);
+		pos.y = round(pos.y-.5);
+		pos.z = round(pos.z-.5);
+		vec3 rot = { 0,0,0 };
+		vec4 quat = euler_to_quat(rot);
+		vec3 size = { 1,1,1 };
+		vec4 color = { 0.5,0.5,0.5,1 };
+		if(mouse_buttons[1] && !prev_rmb) {
+			add_brick(world, pos, quat, size, color, 0, 0,1);
+			prev_rmb = 1;
+		} else if(!mouse_buttons[1]) prev_rmb = 0;
+
+		// render outline of potential brick (10 studs in front of camera)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glUseProgram(program_ids[0]);
+		GLint model_loc = glGetUniformLocation(program_ids[0],"u_model");
+		GLint view_loc = glGetUniformLocation(program_ids[0],"u_view");
+		GLint proj_loc = glGetUniformLocation(program_ids[0],"u_proj");
+		GLint color_loc = glGetUniformLocation(program_ids[0],"u_color");
+
+		mat4 persp = perspective(fovy, window_width/window_height, near, far);
+		float mat_data[] = {
+			persp.m00, persp.m10, persp.m20, persp.m30,
+			persp.m01, persp.m11, persp.m21, persp.m31,
+			persp.m02, persp.m12, persp.m22, persp.m32,
+			persp.m03, persp.m13, persp.m23, persp.m33
+		};
+		glUniformMatrix4fv(proj_loc, 1, GL_FALSE, &mat_data[0]);
+
+		vec3 center = camera_center(player->camera);
+		vec3 up = { 0,1,0 };
+		mat4 view = look_at(player->camera.pos, center, up);
+		float view_data[] = {
+			view.m00, view.m10, view.m20, view.m30,
+			view.m01, view.m11, view.m21, view.m31,
+			view.m02, view.m12, view.m22, view.m32,
+			view.m03, view.m13, view.m23, view.m33
+		};
+		glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view_data[0]);
+
+		// render the potential brick
+		mat4 smat = scale(size);
+		mat4 tmat = translate(pos);		// how much to translate
+		mat4 model = mat4_mat4(tmat,smat);	// scale, then translate
+		float mmat_data[] = {
+			model.m00, model.m10, model.m20, model.m30,
+			model.m01, model.m11, model.m21, model.m31,
+			model.m02, model.m12, model.m22, model.m32,
+			model.m03, model.m13, model.m23, model.m33
+		};
+
+		// update uniforms
+		glUniform4f(color_loc, 1,1,1,1);
+		glUniformMatrix4fv(model_loc, 1, GL_FALSE, &mmat_data[0]);
+
+		// submit draw call
+		glBindVertexArray(meshes[0].vao_id);
+		glBindBuffer(GL_ARRAY_BUFFER,meshes[0].vbo_id);
+		if(meshes[0].has_ibo) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,meshes[0].ibo_id);
+			glDrawElements(GL_TRIANGLES,meshes[0].n_indices,GL_UNSIGNED_SHORT,0);
+		} else
+			glDrawArrays(GL_TRIANGLES,0,meshes[0].n_indices);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	} else {
 		vec3 v = {0,0,0};
 		if(kbd[0] || kbd[1] || kbd[2] || kbd[3]) {
@@ -1532,14 +1582,14 @@ int main() {
 	load_texture_from_file("top.png");			// texture 0 - brick top
 	load_texture_from_file("bottom.png");		// texture 1 - brick bottom
 
-	vec3 pos = { 0,-10,0 };
+	vec3 pos = { -10,-10,-10 };
 	vec3 rot = { 0,0,0 };
 	vec4 quat = euler_to_quat(rot);
 	vec3 scale = { 20,1,20 };
 	vec4 color = { 0,0.6,0,1 };
 	add_brick(world, pos, quat, scale, color, 0, 0,1);
 
-	vec3 pos2 = { 0,-11,0 };
+	vec3 pos2 = { -15,-11,-15 };
 	vec3 rot2 = { 0,0,0 };
 	vec4 quat2 = euler_to_quat(rot2);
 	vec3 scale2 = { 30,1,30 };
