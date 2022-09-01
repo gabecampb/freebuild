@@ -32,6 +32,16 @@ Space - jump (noclip disabled) or ascend (noclip enabled)
 
 Shift - descend (noclip enabled)
 
+Left click - select brick (twice to delete)
+
+Right click - place brick
+
+M - enter scale mode
+
+N - enter translate mode
+
+B - enter color mode (press number key row from 1 to 0 to specify R, G, then B)
+
 ## Features
 
 ✓ Interactive player character & camera
@@ -42,11 +52,11 @@ Shift - descend (noclip enabled)
 
 ✓ Model texturing
 
+✓ Building
+
 _ Entities
 
 _ HUD
-
-_ Building
 
 _ World saving
 
