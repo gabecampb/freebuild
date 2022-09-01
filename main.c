@@ -31,7 +31,7 @@ float fovy = 60;
 float near = 0.1;
 float far = 100;
 
-uint8_t enable_physics_draw = 1;
+uint8_t enable_physics_draw = 0;
 
 typedef struct vec2 { float x,y; } vec2;
 typedef struct vec3 { float x,y,z; } vec3;
@@ -57,7 +57,8 @@ typedef struct player_t {
 	char* name;
 	camera_t camera;
 	uint8_t focused;
-	int32_t selected_brick_id;
+	int32_t selected_brick_id;	// -1 if none
+	uint8_t selection_mode;		// 0 = selected, 1 = scale, 2 = translate, 3 = rotate
 } player_t;
 
 player_t* player;
@@ -464,7 +465,6 @@ void translate_brick(int32_t brick_id, vec3 translation) {
 			}			
 		}
 	} else world->bricks[brick_id].pos = new_pos;
-			
 }
 
 void set_brick_pos(uint32_t brick_id, vec3 new_pos) {
@@ -1310,7 +1310,7 @@ void render_physics() {
 /*==================================================*/
 // affects the camera in global 'player' variable
 
-uint8_t kbd[500];
+int8_t kbd[500];
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	switch(key) {		// respond to keypress
 		case GLFW_KEY_W: key = 0; break;
@@ -1326,13 +1326,29 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 			key = 8; break;
 		case GLFW_KEY_V: key = 9; break;
 		case GLFW_KEY_R: key = 10; break;
+		case GLFW_KEY_M: key = 11; break;
+		case GLFW_KEY_N: key = 12; break;
+		case GLFW_KEY_B: key = 13; break;
+		case GLFW_KEY_U: key = 14; break;
+		case GLFW_KEY_J: key = 15; break;
+		case GLFW_KEY_I: key = 16; break;
+		case GLFW_KEY_K: key = 17; break;
+		case GLFW_KEY_O: key = 18; break;
+		case GLFW_KEY_L: key = 19; break;
 		default: return;
 	}
 	if(action == GLFW_PRESS) {
+		kbd[key] = 1;
 		if(key == 8) enable_physics_draw = !enable_physics_draw;
 		if(key == 9) player->focused = !player->focused;
 		if(key == 10) { vec3 p = {0,0,0}; set_player_pos(p); }
-		kbd[key] = 1;
+
+		vec3 shift;
+		shift.x = kbd[14] - kbd[15];
+		shift.y = kbd[16] - kbd[17];
+		shift.z = kbd[18] - kbd[19];
+		if((shift.x || shift.y || shift.z) && player->selection_mode == 2 && player->selected_brick_id != -1)	// brick translation
+			set_brick_pos(player->selected_brick_id, __add_vec3(world->bricks[player->selected_brick_id].pos, shift));
 	} else if(action == GLFW_RELEASE) kbd[key] = 0;
 }
 
@@ -1360,11 +1376,19 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 				int32_t brick_id = world->colls[ints[0].coll_id].brick_id;
 				if(brick_id != -1) {
 					vec4 c = { 1,1,1,1 };
-					if(brick_id == player->selected_brick_id)
-						delete_brick(brick_id);
-					else player->selected_brick_id = brick_id;
+					int32_t brick_id = world->colls[ints[0].coll_id].brick_id;
+					if(brick_id != -1) {
+						vec4 c = { 1,1,1,1 };
+						if(brick_id == player->selected_brick_id) {
+							delete_brick(brick_id);
+							player->selected_brick_id = -1;
+						} else player->selected_brick_id = brick_id;
+					}
 				}
-			} else player->selected_brick_id = -1;
+			} else {
+				player->selected_brick_id = -1;
+				player->selection_mode = 0;			// reset selection mode when no brick selected
+			}
 		}
 	} else if(action == GLFW_RELEASE) mouse_buttons[button] = 0;
 }
@@ -1511,6 +1535,12 @@ void process_input() {
 		if(kbd[7]) { v.y = -1; player->camera.quat = rotate_quat(player->camera.quat,v); }
 	}
 	
+	if(kbd[11])				// M key pressed; scale mode
+		player->selection_mode = 1;
+	else if(kbd[12])		// N key pressed; translate mode
+		player->selection_mode = 2;
+	else if(kbd[13])		// B key pressed; rotate mode
+		player->selection_mode = 3;
 }
 
 void window_size_callback(GLFWwindow* window, int width, int height) {
