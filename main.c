@@ -58,7 +58,9 @@ typedef struct player_t {
 	camera_t camera;
 	uint8_t focused;
 	int32_t selected_brick_id;	// -1 if none
-	uint8_t selection_mode;		// 0 = selected, 1 = scale, 2 = translate, 3 = rotate
+	uint8_t selection_mode;		// 0 = selected, 1 = scale, 2 = translate, 3 = color
+	uint8_t selection_colors[3];	// the new color for selected brick
+	uint8_t n_selection_colors;	// which of R, G, B the current color selection is on 0-2
 } player_t;
 
 player_t* player;
@@ -474,6 +476,14 @@ void set_brick_pos(uint32_t brick_id, vec3 new_pos) {
 		for(uint32_t i = 0; i < world->n_colls; i++)
 			if(world->colls[i].brick_id == brick_id)
 				world->colls[i].pos = new_pos;
+}
+
+void set_brick_scale(uint32_t brick_id, vec3 new_scale) {
+	world->bricks[brick_id].scale = new_scale;
+	if(world->bricks[brick_id].has_collision)
+		for(uint32_t i = 0; i < world->n_colls; i++)
+			if(world->colls[i].brick_id == brick_id)
+				world->colls[i].dim = new_scale;
 }
 
 
@@ -1335,6 +1345,17 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		case GLFW_KEY_K: key = 17; break;
 		case GLFW_KEY_O: key = 18; break;
 		case GLFW_KEY_L: key = 19; break;
+
+		case GLFW_KEY_1: key = 20; break;
+		case GLFW_KEY_2: key = 21; break;
+		case GLFW_KEY_3: key = 22; break;
+		case GLFW_KEY_4: key = 23; break;
+		case GLFW_KEY_5: key = 24; break;
+		case GLFW_KEY_6: key = 25; break;
+		case GLFW_KEY_7: key = 26; break;
+		case GLFW_KEY_8: key = 27; break;
+		case GLFW_KEY_9: key = 28; break;
+		case GLFW_KEY_0: key = 29; break;
 		default: return;
 	}
 	if(action == GLFW_PRESS) {
@@ -1343,12 +1364,29 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		if(key == 9) player->focused = !player->focused;
 		if(key == 10) { vec3 p = {0,0,0}; set_player_pos(p); }
 
+		if(key >= 20 && key <= 29)
+			player->selection_colors[player->n_selection_colors++] = key-20;
+
 		vec3 shift;
 		shift.x = kbd[14] - kbd[15];
 		shift.y = kbd[16] - kbd[17];
 		shift.z = kbd[18] - kbd[19];
-		if((shift.x || shift.y || shift.z) && player->selection_mode == 2 && player->selected_brick_id != -1)	// brick translation
+		if((shift.x || shift.y || shift.z) && player->selection_mode == 1 && player->selected_brick_id != -1) { // brick scale
+			vec3 new_scale = __add_vec3(world->bricks[player->selected_brick_id].scale, shift);
+			if(new_scale.x >= 1 && new_scale.y >= 1 && new_scale.z >= 1)	// negative scale doesn't work correctly with AABB collisions
+				set_brick_scale(player->selected_brick_id, new_scale);
+		} else if((shift.x || shift.y || shift.z) && player->selection_mode == 2 && player->selected_brick_id != -1)	// brick translation
 			set_brick_pos(player->selected_brick_id, __add_vec3(world->bricks[player->selected_brick_id].pos, shift));
+		else if(player->n_selection_colors == 3 && player->selection_mode == 3 && player->selected_brick_id != -1) {	// brick color
+			vec4 color;
+			color.x = player->selection_colors[0] / 9.;
+			color.y = player->selection_colors[1] / 9.;
+			color.z = player->selection_colors[2] / 9.;
+			color.w = 1.;
+
+			world->bricks[player->selected_brick_id].color = color;
+			player->n_selection_colors = 0;
+		}
 	} else if(action == GLFW_RELEASE) kbd[key] = 0;
 }
 
@@ -1388,6 +1426,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 			} else {
 				player->selected_brick_id = -1;
 				player->selection_mode = 0;			// reset selection mode when no brick selected
+				player->n_selection_colors = 0;
 			}
 		}
 	} else if(action == GLFW_RELEASE) mouse_buttons[button] = 0;
@@ -1539,8 +1578,9 @@ void process_input() {
 		player->selection_mode = 1;
 	else if(kbd[12])		// N key pressed; translate mode
 		player->selection_mode = 2;
-	else if(kbd[13])		// B key pressed; rotate mode
+	else if(kbd[13])		// B key pressed; color mode
 		player->selection_mode = 3;
+	if(kbd[11] || kbd[12] || kbd[13]) player->n_selection_colors = 0;
 }
 
 void window_size_callback(GLFWwindow* window, int width, int height) {
